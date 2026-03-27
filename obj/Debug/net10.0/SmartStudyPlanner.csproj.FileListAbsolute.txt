@@ -71,8 +71,6 @@ C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\co
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\zdkaf9hl7g-{0}-13ja33weya-13ja33weya.gz
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\dm6y4xymey-{0}-wmp8iwak4q-wmp8iwak4q.gz
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\jg2vf4ga78-{0}-2lgipwaf5j-2lgipwaf5j.gz
-C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\3diz6h0zr0-{0}-mc62y2qey4-mc62y2qey4.gz
-C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\sibf9nl7ya-{0}-mc62y2qey4-mc62y2qey4.gz
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\staticwebassets.build.json
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\staticwebassets.build.json.cache
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\staticwebassets.development.json
@@ -83,3 +81,6 @@ C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\re
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\SmartStudyPlanner.pdb
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\SmartStudyPlanner.genruntimeconfig.cache
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\ref\SmartStudyPlanner.dll
+C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\SmartStudyPlanner.sourcelink.json
+C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\3diz6h0zr0-{0}-p1i639j2dh-p1i639j2dh.gz
+C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\sibf9nl7ya-{0}-p1i639j2dh-p1i639j2dh.gz
