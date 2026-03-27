@@ -1,0 +1,4 @@
+C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\EmbeddedAttribute.cs
+C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\ValidatableTypeAttribute.cs
+C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\rpswa.dswa.cache.json
+C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\SmartStudyPlanner.GeneratedMSBuildEditorConfig.editorconfig
