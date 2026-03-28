@@ -23,7 +23,6 @@ C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\sc
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\scopedcss\Components\Layout\ReconnectModal.razor.rz.scp.css
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\scopedcss\bundle\SmartStudyPlanner.styles.css
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\scopedcss\projectbundle\SmartStudyPlanner.bundle.scp.css
-C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\b7goirzz46-{0}-khy4lop6wu-khy4lop6wu.gz
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\n7uzv4l8uw-{0}-bqjiyaj88i-bqjiyaj88i.gz
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\scm37tfm2p-{0}-c2jlpeoesf-c2jlpeoesf.gz
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\pxp4f23h33-{0}-erw9l3u2r3-erw9l3u2r3.gz
@@ -82,5 +81,6 @@ C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\Sm
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\SmartStudyPlanner.genruntimeconfig.cache
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\ref\SmartStudyPlanner.dll
 C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\SmartStudyPlanner.sourcelink.json
-C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\3diz6h0zr0-{0}-p1i639j2dh-p1i639j2dh.gz
-C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\sibf9nl7ya-{0}-p1i639j2dh-p1i639j2dh.gz
+C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\3diz6h0zr0-{0}-uv1ztfnhuy-uv1ztfnhuy.gz
+C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\sibf9nl7ya-{0}-uv1ztfnhuy-uv1ztfnhuy.gz
+C:\Users\Hlaoli\Downloads\cse325\Projects\SmartStudyPlanner\obj\Debug\net10.0\compressed\b7goirzz46-{0}-0uuitbopn4-0uuitbopn4.gz
