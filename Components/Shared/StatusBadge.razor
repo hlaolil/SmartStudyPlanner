@@ -1,0 +1,16 @@
+@if (Forecast is { } f)
+{
+    var (css, text, tip) = f.Status switch
+    {
+        ForecastStatus.OnTrack => ("ok", "On track", "Fits comfortably before the deadline."),
+        ForecastStatus.Tight => ("tight", "Tight", "Fits, but runs into your buffer before the deadline."),
+        ForecastStatus.AtRisk => ("risk", $"Short {Analytics.FormatMinutes(f.ShortfallMinutes)}", "Not enough free time before the deadline. Add availability or reduce scope."),
+        ForecastStatus.Overdue => ("risk", "Overdue", "Past the due date — scheduled as soon as possible."),
+        _ => ("ok", "Ready to finish", "All estimated work is logged. Mark it complete when done.")
+    };
+    <span class="status-badge @css" title="@tip">@text</span>
+}
+
+@code {
+    [Parameter] public TaskForecast? Forecast { get; set; }
+}

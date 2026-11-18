@@ -1,30 +1,36 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">SmartStudyPlanner</a>
+@inject PlannerStore Store
+
+<div class="sidebar-inner">
+    <a href="" class="brand" @onclick="OnNavigate">
+        <span class="brand-mark"><Icon Name="sparkles" Size="20" /></span>
+        <span>Smart<b>Study</b></span>
+    </a>
+
+    <nav class="nav-list" @onclick="OnNavigate">
+        <NavLink class="nav-item" href="" Match="NavLinkMatch.All"><Icon Name="home" /> Today</NavLink>
+        <NavLink class="nav-item" href="tasks"><Icon Name="tasks" /> Tasks
+            @if (_overdue > 0) { <span class="nav-badge danger" title="Overdue">@_overdue</span> }
+        </NavLink>
+        <NavLink class="nav-item" href="planner"><Icon Name="calendar" /> Planner
+            @if (_atRisk > 0) { <span class="nav-badge warn" title="At risk">@_atRisk</span> }
+        </NavLink>
+        <NavLink class="nav-item" href="focus"><Icon Name="clock" /> Focus</NavLink>
+        <NavLink class="nav-item" href="review"><Icon Name="cards" /> Review
+            @if (Store.DueCardCount > 0) { <span class="nav-badge">@Store.DueCardCount</span> }
+        </NavLink>
+        <NavLink class="nav-item" href="subjects"><Icon Name="book" /> Subjects &amp; grades</NavLink>
+        <NavLink class="nav-item" href="insights"><Icon Name="chart" /> Insights</NavLink>
+        <NavLink class="nav-item" href="settings"><Icon Name="settings" /> Settings</NavLink>
+    </nav>
+
+    <div class="sidebar-foot">
+        <ThemeToggle />
     </div>
 </div>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+@code {
+    [Parameter] public EventCallback OnNavigate { get; set; }
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
-            </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
-            </NavLink>
-        </div>
-    </nav>
-</div>
-
+    private int _overdue => Store.Data.Tasks.Count(t => !t.Completed && t.DueDate < Store.Today);
+    private int _atRisk => Store.Plan.AtRisk.Count();
+}

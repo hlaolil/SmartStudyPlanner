@@ -1,0 +1,153 @@
+@inject PlannerStore Store
+
+<Modal Show="Task is not null" Title="@(IsNew ? "New task" : "Edit task")" Wide="true" OnClose="Cancel">
+    <ChildContent>
+        @if (Task is not null)
+        {
+            <div class="vstack gap-3">
+            <form id="task-editor" @onsubmit="Save" @onsubmit:preventDefault="true" class="vstack gap-3">
+                <div>
+                    <label class="form-label" for="te-title">Title</label>
+                    <input id="te-title" class="form-control form-control-lg" @bind="Task.Title" @bind:event="oninput" placeholder="e.g. Lab report: enzyme kinetics" required autofocus />
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-sm-6">
+                        <label class="form-label" for="te-subject">Subject</label>
+                        <select id="te-subject" class="form-select" @bind="SubjectValue">
+                            <option value="">General</option>
+                            @foreach (var s in Store.ActiveSubjects)
+                            {
+                                <option value="@s.Id">@s.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="te-kind">Type</label>
+                        <select id="te-kind" class="form-select" @bind="Task.Kind">
+                            @foreach (var k in Enum.GetValues<TaskKind>())
+                            {
+                                <option value="@k">@k</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-sm-4">
+                        <label class="form-label" for="te-due">Due date</label>
+                        <input id="te-due" type="date" class="form-control" @bind="Task.DueDate" required />
+                    </div>
+                    <div class="col-sm-4">
+                        <label class="form-label" for="te-hours">Estimated hours</label>
+                        <input id="te-hours" type="number" min="0.25" max="200" step="0.25" class="form-control" @bind="Task.EstimatedHours" />
+                    </div>
+                    <div class="col-sm-4">
+                        <label class="form-label d-block">Priority</label>
+                        <div class="btn-group w-100" role="group" aria-label="Priority">
+                            @foreach (var p in Enum.GetValues<Priority>())
+                            {
+                                <button type="button" class="btn btn-sm @(Task.Priority == p ? "btn-primary" : "btn-outline-secondary")" @onclick="() => Task.Priority = p">@p</button>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <details class="editor-more" open="@ShowMore">
+                    <summary>Grades, start date &amp; notes</summary>
+                    <div class="row g-3 mt-1">
+                        <div class="col-sm-4">
+                            <label class="form-label" for="te-start">Don't start before</label>
+                            <input id="te-start" type="date" class="form-control" @bind="Task.StartDate" />
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="form-label" for="te-weight">Weight in final grade (%)</label>
+                            <input id="te-weight" type="number" min="0" max="100" step="0.5" class="form-control" @bind="Task.WeightPercent" placeholder="e.g. 20" />
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="form-label" for="te-score">Score received (%)</label>
+                            <input id="te-score" type="number" min="0" max="150" step="0.5" class="form-control" @bind="Task.ScorePercent" placeholder="after grading" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="te-notes">Notes</label>
+                            <textarea id="te-notes" class="form-control" rows="3" @bind="Task.Notes" placeholder="Requirements, links, rubric…"></textarea>
+                        </div>
+                    </div>
+                </details>
+            </form>
+
+                <div>
+                    <label class="form-label">Steps <span class="text-body-secondary small">— break it down; checked steps count as progress</span></label>
+                    <ul class="list-unstyled vstack gap-1 mb-2">
+                        @foreach (var st in Task.Subtasks)
+                        {
+                            <li class="d-flex align-items-center gap-2">
+                                <input type="checkbox" class="form-check-input mt-0" @bind="st.Done" aria-label="Done" />
+                                <input class="form-control form-control-sm" @bind="st.Title" />
+                                <button type="button" class="btn btn-icon btn-sm" aria-label="Remove step" @onclick="() => Task.Subtasks.Remove(st)"><Icon Name="x" Size="16" /></button>
+                            </li>
+                        }
+                    </ul>
+                    <div class="input-group input-group-sm">
+                        <input class="form-control" placeholder="Add a step and press Enter" @bind="_newStep" @bind:event="oninput" @onkeydown="StepKey" />
+                        <button type="button" class="btn btn-outline-secondary" @onclick="AddStep">Add</button>
+                    </div>
+                </div>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        @if (!IsNew && OnDelete.HasDelegate)
+        {
+            <button type="button" class="btn btn-outline-danger me-auto" @onclick="Delete"><Icon Name="trash" Size="16" /> Delete</button>
+        }
+        <button type="button" class="btn btn-outline-secondary" @onclick="Cancel">Cancel</button>
+        <button type="submit" form="task-editor" class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(Task?.Title)">Save</button>
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>A copy of the task being edited, or null when closed.</summary>
+    [Parameter] public StudyTask? Task { get; set; }
+    [Parameter] public bool IsNew { get; set; }
+    [Parameter] public EventCallback<StudyTask?> TaskChanged { get; set; }
+    [Parameter] public EventCallback<StudyTask> OnDelete { get; set; }
+
+    private string _newStep = "";
+    private bool ShowMore => Task is { } t && (t.WeightPercent.HasValue || t.StartDate.HasValue || !string.IsNullOrEmpty(t.Notes));
+
+    private string SubjectValue
+    {
+        get => Task?.SubjectId?.ToString() ?? "";
+        set { if (Task is not null) Task.SubjectId = Guid.TryParse(value, out var g) ? g : null; }
+    }
+
+    private void AddStep()
+    {
+        if (Task is null || string.IsNullOrWhiteSpace(_newStep)) return;
+        Task.Subtasks.Add(new SubTask { Title = _newStep.Trim() });
+        _newStep = "";
+    }
+
+    private void StepKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") AddStep();
+    }
+
+    private async Task Save()
+    {
+        if (Task is null || string.IsNullOrWhiteSpace(Task.Title)) return;
+        Task.Title = Task.Title.Trim();
+        Task.EstimatedHours = Math.Clamp(Task.EstimatedHours, 0, 500);
+        Task.Subtasks.RemoveAll(s => string.IsNullOrWhiteSpace(s.Title));
+        await Store.UpsertTaskAsync(Task);
+        await TaskChanged.InvokeAsync(null);
+    }
+
+    private Task Cancel() => TaskChanged.InvokeAsync(null);
+
+    private async Task Delete()
+    {
+        if (Task is null) return;
+        var t = Task;
+        await TaskChanged.InvokeAsync(null);
+        await OnDelete.InvokeAsync(t);
+    }
+}

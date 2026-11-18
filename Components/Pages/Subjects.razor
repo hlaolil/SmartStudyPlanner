@@ -1,0 +1,201 @@
+@page "/subjects"
+@inherits StoreComponentBase
+
+<PageTitle>Subjects & grades · SmartStudy</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1 tabindex="-1">Subjects &amp; grades</h1>
+        <p class="lead-sub">Track weekly effort per course and see exactly what you need on the rest of the term.</p>
+    </div>
+    <button class="btn btn-primary" @onclick="New"><Icon Name="plus" Size="16" /> New subject</button>
+</div>
+
+@if (!Data.Subjects.Any())
+{
+    <div class="empty card-surface">
+        <p>Add your courses to color-code tasks, set weekly goals and track grades.</p>
+        <button class="btn btn-primary" @onclick="New">Add your first subject</button>
+    </div>
+}
+
+@{
+    var weekStart = Analytics.StartOfWeek(Today);
+}
+
+<div class="subject-grid">
+    @foreach (var s in Data.Subjects.OrderBy(s => s.Archived).ThenBy(s => s.Name))
+    {
+        var weekMin = Data.Logs.Where(l => l.SubjectId == s.Id && l.Date >= weekStart && l.Date <= Today).Sum(l => l.Minutes);
+        var target = s.TargetWeeklyHours * 60;
+        var open = Data.Tasks.Count(t => t.SubjectId == s.Id && !t.Completed);
+        var nextDue = Data.Tasks.Where(t => t.SubjectId == s.Id && !t.Completed).OrderBy(t => t.DueDate).FirstOrDefault();
+        var g = Analytics.Grades(Data, s);
+        var graded = Data.Tasks.Where(t => t.SubjectId == s.Id && t.WeightPercent is > 0).OrderBy(t => t.DueDate).ToList();
+        <article class="subject-card card-surface @(s.Archived ? "archived" : "")" style="--chip:@s.Color">
+            <header class="subject-head">
+                <span class="subject-swatch"></span>
+                <h2 class="h5 m-0 flex-grow-1">@s.Name @if (s.Archived) { <span class="chip">Archived</span> }</h2>
+                <button class="btn btn-icon btn-sm" aria-label="Edit subject" @onclick="() => Edit(s)"><Icon Name="edit" Size="16" /></button>
+            </header>
+
+            <div class="subject-stats">
+                <div>
+                    <div class="stat-label">This week</div>
+                    <div class="fw-semibold">@Analytics.FormatMinutes(weekMin) <span class="text-body-secondary fw-normal">/ @Analytics.FormatHours(s.TargetWeeklyHours)</span></div>
+                    <div class="mini-bar mt-1"><span style="width:@Pct(target <= 0 ? 0 : weekMin / target);background:var(--chip)"></span></div>
+                </div>
+                <div>
+                    <div class="stat-label">Open tasks</div>
+                    <div class="fw-semibold">@open</div>
+                    @if (nextDue is not null)
+                    {
+                        <div class="small text-body-secondary text-truncate" title="@nextDue.Title">Next: @Analytics.RelativeDue(nextDue.DueDate, Today)</div>
+                    }
+                </div>
+            </div>
+
+            <div class="grade-box">
+                <div class="d-flex justify-content-between align-items-baseline">
+                    <div>
+                        <div class="stat-label">Current grade</div>
+                        <div class="grade-big">@(g.CurrentPercent is { } c ? c.ToString("0.#") + "%" : "—")</div>
+                    </div>
+                    <div class="text-end">
+                        <div class="stat-label">Target</div>
+                        <div class="fw-semibold">@(s.TargetGrade is { } tg ? tg.ToString("0.#") + "%" : "not set")</div>
+                    </div>
+                </div>
+                @if (s.TargetGrade.HasValue && g.NeededOnRemaining is { } need)
+                {
+                    <div class="grade-need @(need > 100 ? "bad" : need <= 0 ? "good" : need > 90 ? "warn" : "")">
+                        @if (need <= 0)
+                        {
+                            <span>🎯 Target secured — even 0% on the remaining @g.RemainingWeight.ToString("0.#")% gets you there.</span>
+                        }
+                        else if (need > 100)
+                        {
+                            <span>Target out of reach: you'd need @need.ToString("0")% on the remaining @g.RemainingWeight.ToString("0.#")%. Talk to your instructor about options.</span>
+                        }
+                        else
+                        {
+                            <span>You need an average of <b>@need.ToString("0.#")%</b> on the remaining @g.RemainingWeight.ToString("0.#")% of the grade.</span>
+                        }
+                    </div>
+                }
+                else if (graded.Count == 0)
+                {
+                    <div class="small text-body-secondary mt-2">Add a grade weight to tasks (e.g. midterm = 25%) to track this course's grade.</div>
+                }
+
+                @if (graded.Count > 0)
+                {
+                    <ul class="graded-list">
+                        @foreach (var t in graded)
+                        {
+                            <li>
+                                <span class="text-truncate flex-grow-1">@t.Title</span>
+                                <span class="text-body-secondary small">@t.WeightPercent!.Value.ToString("0.#")%</span>
+                                <span class="score @(t.ScorePercent is null ? "pending" : "")">@(t.ScorePercent is { } sc ? sc.ToString("0.#") + "%" : "—")</span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </article>
+    }
+</div>
+
+<Modal Show="_editing is not null" Title="@(_isNew ? "New subject" : "Edit subject")" OnClose="() => _editing = null">
+    <ChildContent>
+        @if (_editing is not null)
+        {
+            <form id="subject-form" class="vstack gap-3" @onsubmit="Save" @onsubmit:preventDefault="true">
+                <div>
+                    <label class="form-label" for="s-name">Name</label>
+                    <input id="s-name" class="form-control" @bind="_editing.Name" @bind:event="oninput" required placeholder="e.g. Organic Chemistry" />
+                </div>
+                <div>
+                    <label class="form-label d-block">Color</label>
+                    <div class="swatches">
+                        @foreach (var c in Palette)
+                        {
+                            <button type="button" class="swatch @(_editing.Color == c ? "selected" : "")" style="background:@c" aria-label="Color @c" @onclick="() => _editing.Color = c"></button>
+                        }
+                        <input type="color" class="form-control form-control-color" @bind="_editing.Color" aria-label="Custom color" />
+                    </div>
+                </div>
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="form-label" for="s-hours">Weekly study goal (hours)</label>
+                        <input id="s-hours" type="number" min="0" max="80" step="0.5" class="form-control" @bind="_editing.TargetWeeklyHours" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="s-grade">Target grade (%)</label>
+                        <input id="s-grade" type="number" min="0" max="100" step="1" class="form-control" @bind="_editing.TargetGrade" placeholder="e.g. 85" />
+                    </div>
+                </div>
+                @if (!_isNew)
+                {
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="s-arch" @bind="_editing.Archived" />
+                        <label class="form-check-label" for="s-arch">Archived (finished course)</label>
+                    </div>
+                }
+            </form>
+        }
+    </ChildContent>
+    <Footer>
+        @if (!_isNew)
+        {
+            <button class="btn btn-outline-danger me-auto" @onclick="Delete"><Icon Name="trash" Size="16" /> Delete</button>
+        }
+        <button class="btn btn-outline-secondary" @onclick="() => _editing = null">Cancel</button>
+        <button type="submit" form="subject-form" class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(_editing?.Name)">Save</button>
+    </Footer>
+</Modal>
+
+@code {
+    private static readonly string[] Palette =
+        { "#6366f1", "#8b5cf6", "#ec4899", "#ef4444", "#f97316", "#f59e0b", "#84cc16", "#10b981", "#14b8a6", "#06b6d4", "#3b82f6", "#64748b" };
+
+    private Subject? _editing;
+    private bool _isNew;
+
+    private static string Pct(double v) => Math.Clamp(v * 100, 0, 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    private void New()
+    {
+        _isNew = true;
+        var used = Data.Subjects.Select(s => s.Color).ToHashSet();
+        _editing = new Subject { Color = Palette.FirstOrDefault(c => !used.Contains(c)) ?? Palette[0] };
+    }
+
+    private void Edit(Subject s)
+    {
+        _isNew = false;
+        _editing = new Subject
+        {
+            Id = s.Id, Name = s.Name, Color = s.Color, TargetWeeklyHours = s.TargetWeeklyHours,
+            TargetGrade = s.TargetGrade, Archived = s.Archived
+        };
+    }
+
+    private async Task Save()
+    {
+        if (_editing is null || string.IsNullOrWhiteSpace(_editing.Name)) return;
+        _editing.Name = _editing.Name.Trim();
+        await Store.UpsertSubjectAsync(_editing);
+        _editing = null;
+    }
+
+    private async Task Delete()
+    {
+        if (_editing is null) return;
+        if (await ConfirmAsync($"Delete “{_editing.Name}”? Its tasks and cards are kept as General."))
+        {
+            await Store.DeleteSubjectAsync(_editing.Id);
+            _editing = null;
+        }
+    }
+}

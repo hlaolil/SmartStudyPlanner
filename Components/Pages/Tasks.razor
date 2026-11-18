@@ -1,0 +1,194 @@
+@page "/tasks"
+@inherits StoreComponentBase
+
+<PageTitle>Tasks · SmartStudy</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1 tabindex="-1">Tasks</h1>
+        <p class="lead-sub">@OpenCount open · @Analytics.FormatMinutes(OpenMinutes) of work left</p>
+    </div>
+    <button class="btn btn-primary" @onclick="New"><Icon Name="plus" Size="16" /> New task</button>
+</div>
+
+<QuickAdd ShowHint="false" />
+
+<div class="toolbar mt-3">
+    <div class="segmented" role="tablist" aria-label="Status filter">
+        @foreach (var (value, label) in new[] { ("open", "Open"), ("done", "Completed"), ("all", "All") })
+        {
+            <button role="tab" aria-selected="@(_status == value)" class="@(_status == value ? "active" : "")" @onclick="() => _status = value">@label</button>
+        }
+    </div>
+    <div class="search-box">
+        <Icon Name="search" Size="16" />
+        <input class="form-control form-control-sm" placeholder="Search" aria-label="Search tasks" @bind="_search" @bind:event="oninput" />
+    </div>
+    <select class="form-select form-select-sm w-auto" aria-label="Subject filter" @bind="_subject">
+        <option value="">All subjects</option>
+        @foreach (var s in Store.ActiveSubjects)
+        {
+            <option value="@s.Id">@s.Name</option>
+        }
+    </select>
+    <select class="form-select form-select-sm w-auto" aria-label="Type filter" @bind="_kind">
+        <option value="">All types</option>
+        @foreach (var k in Enum.GetValues<TaskKind>())
+        {
+            <option value="@k">@k</option>
+        }
+    </select>
+    <select class="form-select form-select-sm w-auto" aria-label="Sort" @bind="_sort">
+        <option value="due">Sort: due date</option>
+        <option value="priority">Sort: priority</option>
+        <option value="remaining">Sort: work left</option>
+        <option value="risk">Sort: risk</option>
+    </select>
+</div>
+
+@{
+    var list = Filtered().ToList();
+    var plan = Store.Plan;
+}
+
+@if (list.Count == 0)
+{
+    <div class="empty card-surface mt-3">
+        <p>@(Data.Tasks.Count == 0 ? "No tasks yet — add your first deadline above." : "No tasks match these filters.")</p>
+    </div>
+}
+else
+{
+    @foreach (var group in Group(list))
+    {
+        <h2 class="group-title">@group.Key <span class="count">@group.Count()</span></h2>
+        <ul class="task-list">
+            @foreach (var t in group)
+            {
+                var progress = Analytics.TaskProgress(Data, t);
+                var logged = Analytics.TaskLoggedMinutes(Data, t.Id);
+                <li class="task-row @(t.Completed ? "done" : "")" style="--chip:@Store.SubjectColor(t.SubjectId)">
+                    <button class="check-btn @(t.Completed ? "checked" : "")" aria-label="@(t.Completed ? "Mark as not done" : "Mark as done")"
+                            @onclick="() => Store.SetCompletedAsync(t.Id, !t.Completed)">
+                        <Icon Name="check" Size="14" Stroke="3" />
+                    </button>
+                    <div class="task-main" role="button" tabindex="0" @onclick="() => Edit(t)" @onkeydown='e => { if (e.Key == "Enter") Edit(t); }'>
+                        <div class="task-title">
+                            @if (t.Priority == Priority.High) { <span class="prio-flag" title="High priority">!</span> }
+                            @t.Title
+                        </div>
+                        <div class="task-meta">
+                            <SubjectChip SubjectId="t.SubjectId" />
+                            <span class="chip">@t.Kind</span>
+                            <DueBadge Due="t.DueDate" Today="Today" Completed="t.Completed" />
+                            <span class="meta-text"><Icon Name="clock" Size="13" /> @Analytics.FormatMinutes(logged) / @Analytics.FormatHours(t.EstimatedHours)</span>
+                            @if (t.Subtasks.Count > 0)
+                            {
+                                <span class="meta-text"><Icon Name="tasks" Size="13" /> @t.Subtasks.Count(s => s.Done)/@t.Subtasks.Count</span>
+                            }
+                            @if (t.WeightPercent is { } w)
+                            {
+                                <span class="meta-text" title="Weight in final grade"><Icon Name="award" Size="13" /> @w.ToString("0.#")%@(t.ScorePercent is { } sc ? $" · scored {sc:0.#}%" : "")</span>
+                            }
+                            @if (!t.Completed) { <StatusBadge Forecast="plan.ForecastFor(t.Id)" /> }
+                        </div>
+                        @if (!t.Completed)
+                        {
+                            <div class="mini-bar mt-2"><span style="width:@((progress * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%;background:var(--chip)"></span></div>
+                        }
+                    </div>
+                    <div class="task-actions">
+                        @if (!t.Completed)
+                        {
+                            <button class="btn btn-sm btn-outline-secondary" title="Log 30 minutes of work" @onclick='() => Store.LogAsync(t.Id, 30, "manual")'>+30m</button>
+                            <button class="btn btn-icon btn-sm" title="Start focus timer" aria-label="Start focus timer" @onclick="() => Focus(t)"><Icon Name="play" Size="16" /></button>
+                        }
+                        <button class="btn btn-icon btn-sm" title="Edit" aria-label="Edit task" @onclick="() => Edit(t)"><Icon Name="edit" Size="16" /></button>
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+}
+
+<TaskEditor @bind-Task="_editing" IsNew="_isNew" OnDelete="Delete" />
+
+@code {
+    private string _status = "open";
+    private string _search = "";
+    private string _subject = "";
+    private string _kind = "";
+    private string _sort = "due";
+    private StudyTask? _editing;
+    private bool _isNew;
+
+    private int OpenCount => Data.Tasks.Count(t => !t.Completed);
+    private int OpenMinutes => Store.Plan.Forecasts.Values.Sum(f => f.RemainingMinutes);
+
+    private IEnumerable<StudyTask> Filtered()
+    {
+        IEnumerable<StudyTask> q = Data.Tasks;
+        q = _status switch
+        {
+            "open" => q.Where(t => !t.Completed),
+            "done" => q.Where(t => t.Completed),
+            _ => q
+        };
+        if (Guid.TryParse(_subject, out var sid)) q = q.Where(t => t.SubjectId == sid);
+        if (Enum.TryParse<TaskKind>(_kind, out var kind)) q = q.Where(t => t.Kind == kind);
+        if (!string.IsNullOrWhiteSpace(_search))
+            q = q.Where(t => t.Title.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                             || t.Notes.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                             || Store.SubjectName(t.SubjectId).Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+        var plan = Store.Plan;
+        return _sort switch
+        {
+            "priority" => q.OrderByDescending(t => t.Priority).ThenBy(t => t.DueDate),
+            "remaining" => q.OrderByDescending(t => plan.ForecastFor(t.Id)?.RemainingMinutes ?? 0),
+            "risk" => q.OrderByDescending(t => plan.ForecastFor(t.Id)?.ShortfallMinutes ?? 0).ThenBy(t => t.DueDate),
+            _ => _status == "done" ? q.OrderByDescending(t => t.CompletedOn ?? t.DueDate) : q.OrderBy(t => t.DueDate)
+        };
+    }
+
+    private IEnumerable<IGrouping<string, StudyTask>> Group(List<StudyTask> list)
+    {
+        if (_sort != "due" || _status == "done")
+            return list.GroupBy(_ => _status == "done" ? "Completed" : "Tasks");
+        return list.GroupBy(t =>
+        {
+            if (t.Completed) return "Completed";
+            var d = t.DueDate.DayNumber - Today.DayNumber;
+            if (d < 0) return "Overdue";
+            if (d == 0) return "Today";
+            if (d == 1) return "Tomorrow";
+            if (t.DueDate < Analytics.StartOfWeek(Today).AddDays(7)) return "This week";
+            if (t.DueDate < Analytics.StartOfWeek(Today).AddDays(14)) return "Next week";
+            return "Later";
+        });
+    }
+
+    private void New()
+    {
+        _isNew = true;
+        _editing = new StudyTask { DueDate = Today.AddDays(7) };
+    }
+
+    private void Edit(StudyTask t)
+    {
+        _isNew = false;
+        _editing = t.Clone();
+    }
+
+    private async Task Delete(StudyTask t)
+    {
+        if (await ConfirmAsync($"Delete “{t.Title}”? Logged study time is kept in your history."))
+            await Store.DeleteTaskAsync(t.Id);
+    }
+
+    private async Task Focus(StudyTask t)
+    {
+        await Store.StartTimerAsync(t.Id, Data.Settings.FocusMinutes);
+        Nav.NavigateTo("focus");
+    }
+}

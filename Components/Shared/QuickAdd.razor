@@ -1,0 +1,69 @@
+@inherits StoreComponentBase
+
+<div class="quick-add card-surface">
+    <div class="quick-add-row">
+        <Icon Name="sparkles" Class="text-accent" />
+        <input id="quick-add" class="quick-add-input" placeholder="@Placeholder" aria-label="Quick add a task"
+               @bind="_text" @bind:event="oninput" @onkeydown="OnKey" autocomplete="off" />
+        <button class="btn btn-primary btn-sm" disabled="@string.IsNullOrWhiteSpace(_text)" @onclick="Add">Add</button>
+        <button class="btn btn-outline-secondary btn-sm" title="Add with all options" @onclick="OpenEditor"><Icon Name="edit" Size="16" /></button>
+    </div>
+    @if (_parsed is { } p && !string.IsNullOrWhiteSpace(_text))
+    {
+        <div class="quick-add-preview" aria-live="polite">
+            <span class="chip strong">@p.Title</span>
+            @if (p.SubjectId is not null) { <SubjectChip SubjectId="p.SubjectId" /> }
+            <span class="chip">@p.Kind</span>
+            <span class="chip @(p.DueWasParsed ? "" : "faded")"><Icon Name="calendar" Size="13" /> @p.DueDate.ToString("ddd d MMM")</span>
+            <span class="chip @(p.HoursWereParsed ? "" : "faded")"><Icon Name="clock" Size="13" /> @Analytics.FormatHours(p.EstimatedHours)</span>
+            @if (p.Priority != Priority.Medium) { <span class="chip prio-@p.Priority.ToString().ToLower()">@p.Priority priority</span> }
+        </div>
+    }
+    else if (ShowHint)
+    {
+        <div class="quick-add-hint">Try <code>Bio lab report #biology due fri 4h !high</code> or <code>Calc midterm dec 12 8h</code></div>
+    }
+</div>
+
+<TaskEditor @bind-Task="_editing" IsNew="true" />
+
+@code {
+    [Parameter] public string Placeholder { get; set; } = "Add a task… e.g. “Essay #history due thu 3h”";
+    [Parameter] public bool ShowHint { get; set; } = true;
+    [Parameter] public EventCallback<StudyTask> OnAdded { get; set; }
+
+    private string _text = "";
+    private StudyTask? _editing;
+    private QuickAddResult? _parsed => string.IsNullOrWhiteSpace(_text) ? null : QuickAddParser.Parse(_text, Data.Subjects, Today);
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Add();
+        else if (e.Key == "Escape") _text = "";
+    }
+
+    private StudyTask? Build()
+    {
+        if (_parsed is not { } p) return null;
+        return new StudyTask
+        {
+            Title = p.Title, SubjectId = p.SubjectId, Kind = p.Kind, Priority = p.Priority,
+            DueDate = p.DueDate, EstimatedHours = p.EstimatedHours
+        };
+    }
+
+    private async Task Add()
+    {
+        var t = Build();
+        if (t is null) return;
+        await Store.UpsertTaskAsync(t);
+        _text = "";
+        await OnAdded.InvokeAsync(t);
+    }
+
+    private void OpenEditor()
+    {
+        _editing = Build() ?? new StudyTask { DueDate = Today.AddDays(7) };
+        _text = "";
+    }
+}

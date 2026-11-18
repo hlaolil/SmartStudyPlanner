@@ -1,0 +1,6 @@
+@inject PlannerStore Store
+<span class="subject-chip" style="--chip:@Store.SubjectColor(SubjectId)"><span class="dot"></span>@Store.SubjectName(SubjectId)</span>
+
+@code {
+    [Parameter] public Guid? SubjectId { get; set; }
+}

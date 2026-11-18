@@ -1,0 +1,6 @@
+@inherits StoreComponentBase
+
+@{ var streak = Analytics.Streak(Data, Today); }
+<a href="insights" class="pill @(streak.StudiedToday ? "pill-hot" : "")" title="@(streak.StudiedToday ? "You studied today — streak safe!" : "Study today to keep your streak")">
+    <Icon Name="flame" Size="16" /> @streak.Current<span class="d-none d-sm-inline ms-1">@(streak.Current == 1 ? "day" : "days")</span>
+</a>

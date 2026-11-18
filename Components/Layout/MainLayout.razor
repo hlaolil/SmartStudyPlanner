@@ -1,23 +1,85 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@inject PlannerStore Store
+@implements IDisposable
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
+@if (!RendererInfo.IsInteractive)
+{
+    <div class="static-page">@Body</div>
+}
+else if (!Store.Loaded)
+{
+    <div class="boot-screen" role="status">
+        <div class="brand-mark lg"><Icon Name="sparkles" Size="28" /></div>
+        <div class="text-body-secondary">Loading your planner…</div>
     </div>
+}
+else
+{
+    <div class="app-shell @(_navOpen ? "nav-open" : "")">
+        <aside class="sidebar" aria-label="Main navigation">
+            <NavMenu OnNavigate="() => _navOpen = false" />
+        </aside>
+        <div class="nav-scrim" @onclick="() => _navOpen = false"></div>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+        <div class="main-col">
+            <header class="topbar">
+                <button class="btn btn-icon d-lg-none" aria-label="Open menu" @onclick="() => _navOpen = !_navOpen"><Icon Name="menu" /></button>
+                <a href="" class="topbar-brand d-lg-none">Smart<b>Study</b></a>
+                <div class="ms-auto d-flex align-items-center gap-2">
+                    <TimerHost />
+                    <StreakPill />
+                </div>
+            </header>
+
+            @if (Store.LastError is { } err)
+            {
+                <div class="alert alert-warning m-3 mb-0 d-flex align-items-center gap-2"><Icon Name="alert" /> @err</div>
+            }
+
+            <main class="content" id="main">
+                <ErrorBoundary @ref="_boundary">
+                    <ChildContent>@Body</ChildContent>
+                    <ErrorContent Context="ex">
+                        <div class="card-surface p-4 text-center">
+                            <h2 class="h5">Something went wrong on this page.</h2>
+                            <p class="text-body-secondary">Your data is safe. Try again, or go back to Today.</p>
+                            <button class="btn btn-primary" @onclick="() => _boundary?.Recover()">Try again</button>
+                        </div>
+                    </ErrorContent>
+                </ErrorBoundary>
+            </main>
         </div>
 
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
-</div>
+        <nav class="bottom-nav d-lg-none" aria-label="Quick navigation">
+            <NavLink href="" Match="NavLinkMatch.All"><Icon Name="home" /><span>Today</span></NavLink>
+            <NavLink href="tasks"><Icon Name="tasks" /><span>Tasks</span></NavLink>
+            <NavLink href="planner"><Icon Name="calendar" /><span>Plan</span></NavLink>
+            <NavLink href="focus"><Icon Name="clock" /><span>Focus</span></NavLink>
+            <NavLink href="review"><Icon Name="cards" /><span>Review</span></NavLink>
+        </nav>
+    </div>
+}
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    private bool _navOpen;
+    private ErrorBoundary? _boundary;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!RendererInfo.IsInteractive) return;
+        Store.Changed += OnChanged;
+        await Store.LoadAsync();
+    }
+
+    protected override void OnParametersSet() => _boundary?.Recover();
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Store.Changed -= OnChanged;
+}

@@ -1,0 +1,265 @@
+@page "/insights"
+@inherits StoreComponentBase
+@using System.Globalization
+
+<PageTitle>Insights · SmartStudy</PageTitle>
+
+@{
+    var byDay = Analytics.MinutesByDay(Data);
+    var weekStart = Analytics.StartOfWeek(Today);
+    var thisWeek = Analytics.MinutesBetween(Data, weekStart, Today);
+    var daysIntoWeek = Today.DayNumber - weekStart.DayNumber;
+    var lastWeekSamePoint = Analytics.MinutesBetween(Data, weekStart.AddDays(-7), weekStart.AddDays(-7 + daysIntoWeek));
+    var last30 = Analytics.MinutesBetween(Data, Today.AddDays(-29), Today);
+    var streak = Analytics.Streak(Data, Today);
+    var completed30 = Data.Tasks.Count(t => t.Completed && t.CompletedOn >= Today.AddDays(-29));
+    var onTime = Analytics.OnTimeRate(Data);
+    var calibration = Analytics.CalibrationFactor(Data);
+    var samples = Analytics.EstimateSamples(Data);
+    var goal = Data.Settings.DailyGoalMinutes;
+    var days14 = Enumerable.Range(0, 14).Select(i => Today.AddDays(i - 13)).ToList();
+    var max14 = Math.Max(goal, days14.Max(d => byDay.GetValueOrDefault(d)));
+    var subjects = Store.ActiveSubjects.ToList();
+    var weekBySubject = subjects.Select(s => (s, m: Data.Logs.Where(l => l.SubjectId == s.Id && l.Date >= weekStart && l.Date <= Today).Sum(l => l.Minutes))).ToList();
+    var allBySubject = subjects.Select(s => (s, m: Data.Logs.Where(l => l.SubjectId == s.Id).Sum(l => l.Minutes))).Where(x => x.m > 0).OrderByDescending(x => x.m).ToList();
+    var allTotal = Math.Max(1, allBySubject.Sum(x => x.m));
+    const int heatWeeks = 20;
+    var heatStart = Analytics.StartOfWeek(Today).AddDays(-7 * (heatWeeks - 1));
+    var tips = Tips(byDay, weekBySubject, calibration, samples.Count);
+}
+
+<div class="page-head">
+    <div>
+        <h1 tabindex="-1">Insights</h1>
+        <p class="lead-sub">How you study, what's working, and where to adjust.</p>
+    </div>
+</div>
+
+<section class="stat-grid">
+    <div class="stat card-surface">
+        <div>
+            <div class="stat-label">This week</div>
+            <div class="stat-value">@Analytics.FormatMinutes(thisWeek)</div>
+            <div class="stat-sub">@Delta(thisWeek, lastWeekSamePoint) vs. same point last week</div>
+        </div>
+    </div>
+    <div class="stat card-surface">
+        <div>
+            <div class="stat-label">Daily average (30 days)</div>
+            <div class="stat-value">@Analytics.FormatMinutes(last30 / 30)</div>
+            <div class="stat-sub">@Analytics.FormatMinutes(last30) total</div>
+        </div>
+    </div>
+    <div class="stat card-surface">
+        <div>
+            <div class="stat-label">Streak</div>
+            <div class="stat-value">@streak.Current @(streak.Current == 1 ? "day" : "days")</div>
+            <div class="stat-sub">Best ever: @streak.Best</div>
+        </div>
+    </div>
+    <div class="stat card-surface">
+        <div>
+            <div class="stat-label">Completed (30 days)</div>
+            <div class="stat-value">@completed30 tasks</div>
+            <div class="stat-sub">@(onTime is { } r ? $"{r:P0} on time overall" : "No completed tasks yet")</div>
+        </div>
+    </div>
+</section>
+
+@if (tips.Count > 0)
+{
+    <section class="card-surface mt-3">
+        <h2 class="section-title"><Icon Name="sparkles" /> Suggestions</h2>
+        <ul class="tips">
+            @foreach (var tip in tips)
+            {
+                <li>@tip</li>
+            }
+        </ul>
+    </section>
+}
+
+<div class="grid-2 mt-3">
+    <section class="card-surface">
+        <h2 class="section-title"><Icon Name="chart" /> Study time · last 14 days</h2>
+        <div class="bar-chart" role="img" aria-label="Minutes studied per day over the last 14 days">
+            <div class="goal-line" style="bottom:@Pct(goal / (double)max14)" title="Daily goal @Analytics.FormatMinutes(goal)"><span>goal</span></div>
+            @foreach (var d in days14)
+            {
+                var m = byDay.GetValueOrDefault(d);
+                <div class="bc-col @(d == Today ? "today" : "")" title="@d.ToString("ddd d MMM"): @Analytics.FormatMinutes(m)">
+                    <div class="bc-track"><span class="bc-bar @(m >= goal ? "met" : "")" style="height:@Pct(m / (double)max14)"></span></div>
+                    <div class="bc-label">@(d.ToString("ddd")[..1])</div>
+                </div>
+            }
+        </div>
+        <details class="mt-2 small">
+            <summary>Show as table</summary>
+            <table class="table table-sm mt-2">
+                <tbody>
+                    @foreach (var d in days14)
+                    {
+                        <tr><td>@d.ToString("ddd d MMM")</td><td class="text-end">@Analytics.FormatMinutes(byDay.GetValueOrDefault(d))</td></tr>
+                    }
+                </tbody>
+            </table>
+        </details>
+    </section>
+
+    <section class="card-surface">
+        <h2 class="section-title"><Icon Name="book" /> This week by subject</h2>
+        @if (weekBySubject.Count == 0)
+        {
+            <div class="empty"><p>Add subjects to see your balance.</p></div>
+        }
+        else
+        {
+            <ul class="hbar-list">
+                @foreach (var (s, m) in weekBySubject.OrderByDescending(x => x.m))
+                {
+                    var target = s.TargetWeeklyHours * 60;
+                    var scale = Math.Max(1, weekBySubject.Max(x => Math.Max(x.m, x.s.TargetWeeklyHours * 60)));
+                    <li>
+                        <div class="d-flex justify-content-between small"><span class="fw-semibold">@s.Name</span><span class="text-body-secondary">@Analytics.FormatMinutes(m) / @Analytics.FormatHours(s.TargetWeeklyHours)</span></div>
+                        <div class="hbar" title="@s.Name: @Analytics.FormatMinutes(m) of @Analytics.FormatHours(s.TargetWeeklyHours) target">
+                            <span style="width:@Pct(m / scale);background:@s.Color"></span>
+                            @if (target > 0) { <i class="target-tick" style="left:@Pct(target / scale)"></i> }
+                        </div>
+                    </li>
+                }
+            </ul>
+            <div class="legend mt-2"><i class="target-tick-legend"></i> weekly target</div>
+        }
+    </section>
+</div>
+
+<section class="card-surface mt-3">
+    <h2 class="section-title"><Icon Name="calendar" /> Consistency · last @heatWeeks weeks</h2>
+    <div class="heatmap-wrap">
+        <div class="heatmap-days"><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span>Sun</span></div>
+        <div class="heatmap" style="--weeks:@heatWeeks" role="img" aria-label="Calendar heatmap of daily study time">
+            @for (var w = 0; w < heatWeeks; w++)
+            {
+                @for (var dow = 0; dow < 7; dow++)
+                {
+                    var d = heatStart.AddDays(w * 7 + dow);
+                    var m = byDay.GetValueOrDefault(d);
+                    var level = d > Today ? -1 : m == 0 ? 0 : m < goal * 0.33 ? 1 : m < goal * 0.66 ? 2 : m < goal ? 3 : 4;
+                    <span class="hm-cell @(level < 0 ? "lx" : "l" + level)" style="grid-column:@(w + 1);grid-row:@(dow + 1)"
+                          title="@d.ToString("ddd d MMM yyyy"): @Analytics.FormatMinutes(m)"></span>
+                }
+            }
+        </div>
+    </div>
+    <div class="legend mt-2">Less <span class="hm-cell l0"></span><span class="hm-cell l1"></span><span class="hm-cell l2"></span><span class="hm-cell l3"></span><span class="hm-cell l4"></span> More (relative to your daily goal)</div>
+</section>
+
+<div class="grid-2 mt-3">
+    <section class="card-surface">
+        <h2 class="section-title"><Icon Name="target" /> Estimate accuracy</h2>
+        @if (samples.Count < 3)
+        {
+            <p class="text-body-secondary">Complete @(3 - samples.Count) more @(3 - samples.Count == 1 ? "task" : "tasks") with logged time and SmartStudy will learn how long things really take you — then automatically correct future plans.</p>
+        }
+        else
+        {
+            <p>
+                Tasks take you <b>@((calibration * 100).ToString("0"))%</b> of your estimate on average
+                @if (calibration > 1.05) { <span>— you tend to <b>underestimate</b>.</span> }
+                else if (calibration < 0.95) { <span>— you tend to <b>overestimate</b>.</span> }
+                else { <span>— spot on!</span> }
+            </p>
+            <p class="small text-body-secondary">Automatic correction is @(Data.Settings.UseCalibration ? "on" : "off") (<a href="settings">settings</a>).</p>
+            <table class="table table-sm">
+                <thead><tr><th>Task</th><th class="text-end">Estimated</th><th class="text-end">Actual</th></tr></thead>
+                <tbody>
+                    @foreach (var (t, est, act) in samples.OrderByDescending(x => x.task.CompletedOn).Take(6))
+                    {
+                        <tr>
+                            <td class="text-truncate" style="max-width:14rem">@t.Title</td>
+                            <td class="text-end">@Analytics.FormatMinutes((int)est)</td>
+                            <td class="text-end @(act > est * 1.2 ? "text-danger" : act < est * 0.8 ? "text-success" : "")">@Analytics.FormatMinutes((int)act)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </section>
+
+    <section class="card-surface">
+        <h2 class="section-title"><Icon Name="folder" /> All-time by subject</h2>
+        @if (allBySubject.Count == 0)
+        {
+            <div class="empty"><p>No study time logged yet.</p></div>
+        }
+        else
+        {
+            <div class="stack-bar" role="img" aria-label="Share of all study time by subject">
+                @foreach (var (s, m) in allBySubject)
+                {
+                    <span style="width:@Pct(m / (double)allTotal);background:@s.Color" title="@s.Name: @Analytics.FormatMinutes(m)"></span>
+                }
+            </div>
+            <ul class="list-unstyled mt-3 vstack gap-1 m-0">
+                @foreach (var (s, m) in allBySubject)
+                {
+                    <li class="d-flex align-items-center gap-2 small">
+                        <span class="kind-dot" style="background:@s.Color"></span>
+                        <span class="flex-grow-1">@s.Name</span>
+                        <span class="text-body-secondary">@((m * 100.0 / allTotal).ToString("0"))%</span>
+                        <span class="fw-semibold" style="min-width:4.5rem;text-align:right">@Analytics.FormatMinutes(m)</span>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+</div>
+
+@code {
+    private static string Pct(double v) => Math.Clamp(v * 100, 0, 100).ToString("0.#", CultureInfo.InvariantCulture) + "%";
+
+    private static string Delta(int now, int before)
+    {
+        if (before == 0) return now > 0 ? "▲ new" : "—";
+        var change = (now - before) / (double)before;
+        return (change >= 0 ? "▲ " : "▼ ") + Math.Abs(change).ToString("P0");
+    }
+
+    private List<string> Tips(Dictionary<DateOnly, int> byDay, List<(Subject s, int m)> weekBySubject, double calibration, int samples)
+    {
+        var tips = new List<string>();
+        var recent = Enumerable.Range(0, 56).Select(i => Today.AddDays(-i)).Where(d => byDay.ContainsKey(d)).ToList();
+        if (recent.Count >= 5)
+        {
+            var best = recent.GroupBy(d => d.DayOfWeek)
+                .Select(g => (day: g.Key, avg: g.Average(d => byDay[d])))
+                .OrderByDescending(x => x.avg).First();
+            tips.Add($"{best.day}s are your strongest day (avg {Analytics.FormatMinutes((int)best.avg)}). Schedule your hardest work then.");
+        }
+
+        var daysIn = Today.DayNumber - Analytics.StartOfWeek(Today).DayNumber + 1;
+        foreach (var (s, m) in weekBySubject.Where(x => x.s.TargetWeeklyHours > 0))
+        {
+            var expected = s.TargetWeeklyHours * 60 * daysIn / 7.0;
+            if (daysIn >= 3 && m < expected * 0.4)
+                tips.Add($"{s.Name} is behind this week ({Analytics.FormatMinutes(m)} of a {Analytics.FormatHours(s.TargetWeeklyHours)} goal). A short session today keeps it from piling up.");
+        }
+
+        if (samples >= 3 && calibration > 1.2 && !Data.Settings.UseCalibration)
+            tips.Add($"Your tasks take ~{calibration:P0} of your estimates. Turn on automatic estimate correction in Settings so your plan stays realistic.");
+
+        var overdueCards = Data.Cards.Count(c => c.DueDate < Today);
+        if (overdueCards > 20)
+            tips.Add($"{overdueCards} flashcards are overdue. Review a little every day — 10 minutes daily beats an hour once a week.");
+
+        var streak = Analytics.Streak(Data, Today);
+        if (!streak.StudiedToday && streak.Current >= 3)
+            tips.Add($"You're on a {streak.Current}-day streak. Even 15 minutes today keeps it alive.");
+
+        var lateTasks = Data.Tasks.Count(t => t.Completed && t.CompletedOn > t.DueDate);
+        if (lateTasks >= 2 && Data.Settings.BufferDays == 0)
+            tips.Add("Several tasks finished late. Set a 1–2 day buffer in Settings so the plan aims to finish early.");
+
+        return tips;
+    }
+}

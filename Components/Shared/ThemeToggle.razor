@@ -1,0 +1,31 @@
+@inject IJSRuntime JS
+
+<div class="theme-toggle" role="radiogroup" aria-label="Theme">
+    @foreach (var (value, icon, label) in Options)
+    {
+        <button type="button" role="radio" aria-checked="@(_theme == value)" title="@label"
+                class="@(_theme == value ? "active" : "")" @onclick="() => Set(value)">
+            <Icon Name="@icon" Size="16" />
+        </button>
+    }
+</div>
+
+@code {
+    private static readonly (string, string, string)[] Options =
+        { ("light", "sun", "Light"), ("auto", "monitor", "System"), ("dark", "moon", "Dark") };
+
+    private string _theme = "auto";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _theme = await JS.InvokeAsync<string>("ssp.getTheme");
+        StateHasChanged();
+    }
+
+    private async Task Set(string theme)
+    {
+        _theme = theme;
+        await JS.InvokeVoidAsync("ssp.setTheme", theme);
+    }
+}

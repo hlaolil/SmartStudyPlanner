@@ -1,7 +1,259 @@
 ﻿@page "/"
+@inherits StoreComponentBase
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Today · SmartStudy</PageTitle>
 
-<h1>Hello, world!</h1>
+@if (!Data.Onboarded)
+{
+    <Onboarding />
+    return;
+}
 
-Welcome to your new app.
+@{
+    var plan = Store.Plan;
+    var todayBlocks = plan.ForDay(Today).ToList();
+    var loggedToday = Data.Logs.Where(l => l.Date == Today).ToList();
+    var minutesToday = loggedToday.Sum(l => l.Minutes);
+    var goal = Math.Max(1, Data.Settings.DailyGoalMinutes);
+    var weekStart = Analytics.StartOfWeek(Today);
+    var weekMinutes = Analytics.MinutesBetween(Data, weekStart, Today);
+    var weekTarget = Store.ActiveSubjects.Sum(s => s.TargetWeeklyHours) * 60;
+    var streak = Analytics.Streak(Data, Today);
+    var overdue = Data.Tasks.Where(t => !t.Completed && t.DueDate < Today).OrderBy(t => t.DueDate).ToList();
+    var atRisk = plan.Forecasts.Values.Where(f => f.Status == ForecastStatus.AtRisk).Select(f => (f, t: Store.TaskById(f.TaskId)!)).Where(x => x.t is not null).ToList();
+    var upcoming = Store.OpenTasks.Where(t => t.DueDate >= Today).Take(8).ToList();
+    var plannedLeft = todayBlocks.Sum(b => b.Minutes);
+}
+
+<div class="page-head">
+    <div>
+        <h1 tabindex="-1">@Greeting()@(string.IsNullOrWhiteSpace(Data.Settings.StudentName) ? "" : ", " + Data.Settings.StudentName)</h1>
+        <p class="lead-sub">@Store.Now.ToString("dddd, d MMMM") · @Motivation(minutesToday, plannedLeft)</p>
+    </div>
+</div>
+
+<QuickAdd />
+
+<section class="stat-grid mt-3">
+    <div class="stat card-surface">
+        <ProgressRing Value="@(minutesToday / (double)goal)" Size="76" Stroke="8" Label="Daily goal progress">
+            <span class="ring-pct">@((int)Math.Min(999, Math.Round(minutesToday * 100.0 / goal)))%</span>
+        </ProgressRing>
+        <div>
+            <div class="stat-label">Today</div>
+            <div class="stat-value">@Analytics.FormatMinutes(minutesToday)</div>
+            <div class="stat-sub">of @Analytics.FormatMinutes(goal) goal</div>
+        </div>
+    </div>
+    <div class="stat card-surface">
+        <div class="stat-icon flame"><Icon Name="flame" Size="26" /></div>
+        <div>
+            <div class="stat-label">Streak</div>
+            <div class="stat-value">@streak.Current @(streak.Current == 1 ? "day" : "days")</div>
+            <div class="stat-sub">Best: @streak.Best</div>
+        </div>
+    </div>
+    <div class="stat card-surface">
+        <div class="stat-icon week"><Icon Name="trend" Size="26" /></div>
+        <div class="flex-grow-1">
+            <div class="stat-label">This week</div>
+            <div class="stat-value">@Analytics.FormatMinutes(weekMinutes)</div>
+            @if (weekTarget > 0)
+            {
+                <div class="mini-bar"><span style="width:@Pct(weekMinutes / weekTarget)"></span></div>
+                <div class="stat-sub">target @Analytics.FormatMinutes((int)weekTarget)</div>
+            }
+        </div>
+    </div>
+    <a class="stat card-surface stat-link" href="review">
+        <div class="stat-icon cards"><Icon Name="cards" Size="26" /></div>
+        <div>
+            <div class="stat-label">Cards due</div>
+            <div class="stat-value">@Store.DueCardCount</div>
+            <div class="stat-sub">@(Store.DueCardCount > 0 ? "Review now →" : "All caught up")</div>
+        </div>
+    </a>
+</section>
+
+@if (overdue.Count > 0 || atRisk.Count > 0)
+{
+    <section class="attention card-surface mt-3" aria-label="Needs attention">
+        <h2 class="section-title"><Icon Name="alert" /> Needs attention</h2>
+        <ul class="list-unstyled m-0 vstack gap-2">
+            @foreach (var t in overdue.Take(_showAllAttention ? 99 : 3))
+            {
+                <li class="attention-item">
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="d-flex gap-2 align-items-center flex-wrap"><b>@t.Title</b> <span class="status-badge risk">Overdue</span></div>
+                        <div class="small text-body-secondary">Was due @t.DueDate.ToString("ddd d MMM"). Finish it, or move the date if you got an extension.</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-success" @onclick="() => Store.SetCompletedAsync(t.Id, true)"><Icon Name="check" Size="14" /> Done</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _editing = t.Clone()">Edit</button>
+                    </div>
+                </li>
+            }
+            @foreach (var (f, t) in atRisk.Take(_showAllAttention ? 99 : Math.Max(0, 3 - overdue.Count)))
+            {
+                <li class="attention-item">
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="d-flex gap-2 align-items-center flex-wrap"><b>@t.Title</b> <span class="status-badge risk">Short @Analytics.FormatMinutes(f.ShortfallMinutes)</span></div>
+                        <div class="small text-body-secondary">Doesn't fit before @t.DueDate.ToString("ddd d MMM"). Add study time on a day or two, or trim the estimate.</div>
+                    </div>
+                    <a class="btn btn-sm btn-outline-secondary" href="planner">Adjust plan</a>
+                </li>
+            }
+        </ul>
+        @if (!_showAllAttention && overdue.Count + atRisk.Count > 3)
+        {
+            <button class="btn btn-link btn-sm px-0 mt-2" @onclick="() => _showAllAttention = true">Show all @(overdue.Count + atRisk.Count)</button>
+        }
+    </section>
+}
+
+<div class="grid-2 mt-3">
+    <section class="card-surface">
+        <div class="section-head">
+            <h2 class="section-title"><Icon Name="calendar" /> Today's plan</h2>
+            <span class="text-body-secondary small">@Analytics.FormatMinutes(plannedLeft) left</span>
+        </div>
+
+        @if (todayBlocks.Count == 0)
+        {
+            <div class="empty">
+                @if (Data.Tasks.All(t => t.Completed))
+                {
+                    <p>No open tasks yet. Add one above and your plan builds itself.</p>
+                }
+                else if (minutesToday >= goal)
+                {
+                    <p>🎉 You've hit today's goal. Rest up — or get ahead from the task list.</p>
+                }
+                else
+                {
+                    <p>Nothing scheduled for the rest of today. Your availability today is @Analytics.FormatMinutes(Data.Settings.MinutesFor(Today)).</p>
+                    <a href="planner" class="btn btn-sm btn-outline-primary">Adjust availability</a>
+                }
+            </div>
+        }
+        else
+        {
+            <ol class="timeline">
+                @foreach (var b in todayBlocks)
+                {
+                    var task = Store.TaskById(b.TaskId);
+                    <li class="timeline-item" style="--chip:@(b.Kind == BlockKind.Review ? "var(--accent)" : Store.SubjectColor(b.SubjectId))">
+                        <div class="timeline-time">@b.Start.ToString("HH:mm")</div>
+                        <div class="timeline-body">
+                            <div class="fw-semibold">@b.Title</div>
+                            <div class="small text-body-secondary d-flex gap-2 flex-wrap align-items-center">
+                                @if (b.Kind == BlockKind.Review)
+                                {
+                                    <span>@Store.DueCardCount cards</span>
+                                }
+                                else
+                                {
+                                    <SubjectChip SubjectId="b.SubjectId" />
+                                    @if (task is not null) { <DueBadge Due="task.DueDate" Today="Today" /> }
+                                }
+                                <span>@b.Minutes min</span>
+                            </div>
+                        </div>
+                        <div class="timeline-actions">
+                            @if (b.Kind == BlockKind.Review)
+                            {
+                                <a class="btn btn-sm btn-primary" href="review"><Icon Name="play" Size="14" /> Review</a>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-primary" title="Start a focus timer for this block" @onclick="() => StartFocus(b)"><Icon Name="play" Size="14" /> Focus</button>
+                                <button class="btn btn-sm btn-outline-success" title="I did this — log @b.Minutes min" @onclick='() => Store.LogAsync(b.TaskId, b.Minutes, "plan")'><Icon Name="check" Size="14" /></button>
+                            }
+                        </div>
+                    </li>
+                }
+            </ol>
+        }
+
+        @if (loggedToday.Count > 0)
+        {
+            <h3 class="subsection-title mt-3">Done today</h3>
+            <ul class="list-unstyled vstack gap-1 m-0">
+                @foreach (var l in loggedToday.OrderByDescending(l => l.LoggedAtUtc))
+                {
+                    <li class="logged-row">
+                        <Icon Name="check" Size="14" Class="text-success" />
+                        <span class="flex-grow-1 text-truncate">@(Store.TaskById(l.TaskId)?.Title ?? (l.Source == "review" ? "Flashcard review" : "Study session"))</span>
+                        <span class="text-body-secondary small">@l.Minutes min</span>
+                        <button class="btn btn-icon btn-sm" title="Undo" aria-label="Remove this log" @onclick="() => Store.DeleteLogAsync(l.Id)"><Icon Name="x" Size="14" /></button>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+
+    <section class="card-surface">
+        <div class="section-head">
+            <h2 class="section-title"><Icon Name="target" /> Coming up</h2>
+            <a href="tasks" class="small">All tasks →</a>
+        </div>
+        @if (upcoming.Count == 0)
+        {
+            <div class="empty"><p>No upcoming deadlines. Enjoy it!</p></div>
+        }
+        else
+        {
+            <ul class="list-unstyled vstack gap-2 m-0">
+                @foreach (var t in upcoming)
+                {
+                    var progress = Analytics.TaskProgress(Data, t);
+                    <li class="upcoming-item" @onclick="() => _editing = t.Clone()" role="button" tabindex="0">
+                        <span class="kind-dot" style="background:@Store.SubjectColor(t.SubjectId)"></span>
+                        <div class="flex-grow-1 min-w-0">
+                            <div class="d-flex justify-content-between gap-2">
+                                <span class="fw-semibold text-truncate">@t.Title</span>
+                                <DueBadge Due="t.DueDate" Today="Today" />
+                            </div>
+                            <div class="d-flex align-items-center gap-2 mt-1">
+                                <div class="mini-bar flex-grow-1"><span style="width:@Pct(progress);background:@Store.SubjectColor(t.SubjectId)"></span></div>
+                                <StatusBadge Forecast="plan.ForecastFor(t.Id)" />
+                            </div>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+</div>
+
+<TaskEditor @bind-Task="_editing" OnDelete="t => Store.DeleteTaskAsync(t.Id)" />
+
+@code {
+    private StudyTask? _editing;
+    private bool _showAllAttention;
+
+    private string Greeting()
+    {
+        var h = Store.Now.Hour;
+        if (h >= 18) return "Good evening";
+        if (h >= 12) return "Good afternoon";
+        if (h >= 5) return "Good morning";
+        return "Burning the midnight oil";
+    }
+
+    private string Motivation(int doneMinutes, int plannedMinutes)
+    {
+        if (plannedMinutes == 0 && doneMinutes == 0) return "a clear day ahead.";
+        if (plannedMinutes == 0) return $"{Analytics.FormatMinutes(doneMinutes)} done — you're finished for today.";
+        if (doneMinutes == 0) return $"{Analytics.FormatMinutes(plannedMinutes)} planned. Start with the first block.";
+        return $"{Analytics.FormatMinutes(doneMinutes)} done, {Analytics.FormatMinutes(plannedMinutes)} to go.";
+    }
+
+    private static string Pct(double v) => Math.Clamp(v * 100, 0, 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    private async Task StartFocus(PlannedBlock b)
+    {
+        await Store.StartTimerAsync(b.TaskId, b.Minutes);
+        Nav.NavigateTo("focus");
+    }
+}
