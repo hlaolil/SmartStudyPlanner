@@ -61,7 +61,7 @@
         <div>
             <div class="stat-label">Completed (30 days)</div>
             <div class="stat-value">@completed30 tasks</div>
-            <div class="stat-sub">@(onTime is { } r ? $"{r:P0} on time overall" : "No completed tasks yet")</div>
+            <div class="stat-sub">@(onTime is { } r ? $"{r * 100:0}% on time overall" : "No completed tasks yet")</div>
         </div>
     </div>
 </section>
@@ -222,7 +222,7 @@
     {
         if (before == 0) return now > 0 ? "▲ new" : "—";
         var change = (now - before) / (double)before;
-        return (change >= 0 ? "▲ " : "▼ ") + Math.Abs(change).ToString("P0");
+        return (change >= 0 ? "▲ " : "▼ ") + (Math.Abs(change) * 100).ToString("0") + "%";
     }
 
     private List<string> Tips(Dictionary<DateOnly, int> byDay, List<(Subject s, int m)> weekBySubject, double calibration, int samples)
@@ -246,7 +246,7 @@
         }
 
         if (samples >= 3 && calibration > 1.2 && !Data.Settings.UseCalibration)
-            tips.Add($"Your tasks take ~{calibration:P0} of your estimates. Turn on automatic estimate correction in Settings so your plan stays realistic.");
+            tips.Add($"Your tasks take ~{calibration * 100:0}% of your estimates. Turn on automatic estimate correction in Settings so your plan stays realistic.");
 
         var overdueCards = Data.Cards.Count(c => c.DueDate < Today);
         if (overdueCards > 20)
