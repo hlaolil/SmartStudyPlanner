@@ -1,43 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#4f46e5" />
-    <meta name="description" content="SmartStudyPlanner builds your study schedule automatically around deadlines, exams and the time you actually have." />
-    <base href="/" />
-    <script>
-        (function () {
-            var t = "auto";
-            try { t = localStorage.getItem("ssp.theme") || "auto"; } catch (e) { }
-            var dark = t === "dark" || (t === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-            document.documentElement.setAttribute("data-bs-theme", dark ? "dark" : "light");
-        })();
-    </script>
-    <ResourcePreloader />
-    <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
-    <link rel="stylesheet" href="@Assets["app.css"]" />
-    <link rel="stylesheet" href="@Assets["SmartStudyPlanner.styles.css"]" />
-    <ImportMap />
-    <link rel="icon" type="image/png" href="favicon.png" />
-    <HeadOutlet @rendermode="PageRenderMode" />
-</head>
-
-<body>
-    <Routes @rendermode="PageRenderMode" />
-    <ReconnectModal />
-    <script src="@Assets["js/ssp.js"]"></script>
-    <script src="@Assets["_framework/blazor.web.js"]"></script>
-</body>
-
-</html>
-
-@code {
-    [CascadingParameter]
-    private HttpContext HttpContext { get; set; } = default!;
-
-    // Data lives in the browser, so pages render interactively without prerendering.
-    private IComponentRenderMode? PageRenderMode =>
-        HttpContext.AcceptsInteractiveRouting() ? new InteractiveServerRenderMode(prerender: false) : null;
-}
+<Router AppAssembly="typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>

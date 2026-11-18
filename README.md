@@ -4,8 +4,9 @@ A study planner that **builds your schedule for you**. Add your deadlines and ho
 have; SmartStudy spreads the work across your week, warns you before you fall behind, and
 re-plans the moment anything changes.
 
-Built with ASP.NET Core Blazor (.NET 10, interactive server). Data is stored privately in the
-browser's `localStorage`, so there's no account, no database, and nothing to configure.
+Built with Blazor WebAssembly (.NET 10): the whole app runs in the browser and publishes as
+static files. Data is stored privately in the browser's `localStorage`, so there's no account,
+no database, no server and nothing to configure.
 
 ## Features
 
@@ -29,6 +30,14 @@ dotnet run --launch-profile http
 ```
 
 Then open http://localhost:5069 and choose **Explore with a sample semester**.
+
+To produce the static site:
+
+```bash
+dotnet publish SmartStudyPlanner.csproj -c Release -o publish
+```
+
+Serve `publish/wwwroot` from any static host, falling back to `index.html` for unknown paths.
 
 ## Tests
 
@@ -56,5 +65,10 @@ tests/             xUnit tests
 
 ## Deployment
 
-`.github/workflows/master_smartstudyplanner.yml` builds, tests and deploys to Azure App Service
-on every push to `master`.
+**Vercel**: import the repository. No settings are needed, because `vercel.json` handles them:
+- `scripts/vercel-install.sh` installs the .NET 10 SDK, which Vercel's build image doesn't include.
+- `scripts/vercel-build.sh` publishes the static site to `publish/wwwroot`.
+- Every route falls back to `index.html`, so deep links like `/planner` work.
+
+**Azure App Service**: `.github/workflows/master_smartstudyplanner.yml` builds, tests and deploys
+on every push to `master`. The publish output includes a `web.config` for IIS.
