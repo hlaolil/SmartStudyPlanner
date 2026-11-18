@@ -1,0 +1,46 @@
+@if (Show)
+{
+    <div class="ssp-modal" role="dialog" aria-modal="true" aria-label="@Title" @onclick="Close" @onkeydown="OnKey">
+        <div class="ssp-modal-card @(Wide ? "wide" : "")" tabindex="-1" @onclick:stopPropagation="true">
+            <div class="ssp-modal-header">
+                <h2 class="h5 m-0">@Title</h2>
+                <button type="button" class="btn btn-icon" @onclick="Close" aria-label="Close"><Icon Name="x" /></button>
+            </div>
+            <div class="ssp-modal-body">@ChildContent</div>
+            @if (Footer is not null)
+            {
+                <div class="ssp-modal-footer">@Footer</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback<bool> ShowChanged { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public bool Wide { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    private bool _wasShown;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Show && !_wasShown)
+        {
+            try { await JS.InvokeVoidAsync("ssp.focusModal"); } catch (JSException) { }
+        }
+        _wasShown = Show;
+    }
+
+    private async Task Close()
+    {
+        await ShowChanged.InvokeAsync(false);
+        await OnClose.InvokeAsync();
+    }
+
+    private Task OnKey(KeyboardEventArgs e) => e.Key == "Escape" ? Close() : Task.CompletedTask;
+}

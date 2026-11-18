@@ -1,0 +1,216 @@
+@page "/settings"
+@inherits StoreComponentBase
+
+<PageTitle>Settings · SmartStudy</PageTitle>
+
+@{ var s = Data.Settings; }
+
+<div class="page-head">
+    <div>
+        <h1 tabindex="-1">Settings</h1>
+        <p class="lead-sub">Changes save automatically and your plan updates instantly.</p>
+    </div>
+</div>
+
+<div class="grid-2">
+    <section class="card-surface">
+        <h2 class="section-title"><Icon Name="calendar" /> Weekly availability</h2>
+        <p class="small text-body-secondary">How many hours can you realistically study each day? Be honest — a plan you can keep beats an ambitious one you can't. Override single days from the Planner.</p>
+        <div class="avail-grid">
+            @foreach (var day in WeekOrder)
+            {
+                var d = day;
+                <label class="avail-row">
+                    <span class="avail-day">@d.ToString()[..3]</span>
+                    <input type="range" class="form-range" min="0" max="10" step="0.25" value="@Hours(d)" @onchange="e => SetHours(d, e.Value)" aria-label="@d hours" />
+                    <span class="avail-val tabular">@Analytics.FormatMinutes(s.BaseMinutesFor(d))</span>
+                </label>
+            }
+        </div>
+        <div class="mt-2 fw-semibold">Total: @Analytics.FormatMinutes(s.AvailabilityMinutes.Sum()) per week</div>
+
+        <div class="row g-3 mt-2">
+            <div class="col-6">
+                <label class="form-label" for="st-start">Study usually starts at</label>
+                <input id="st-start" type="time" class="form-control" @bind="StartTime" @bind:after="Save" />
+            </div>
+            <div class="col-6">
+                <label class="form-label" for="st-goal">Daily goal (minutes)</label>
+                <input id="st-goal" type="number" min="0" max="900" step="5" class="form-control" @bind="s.DailyGoalMinutes" @bind:after="Save" />
+            </div>
+        </div>
+    </section>
+
+    <section class="card-surface">
+        <h2 class="section-title"><Icon Name="sparkles" /> Smart scheduling</h2>
+        <div class="row g-3">
+            <div class="col-6">
+                <label class="form-label" for="st-session">Study block length (min)</label>
+                <input id="st-session" type="number" min="15" max="180" step="5" class="form-control" @bind="s.SessionMinutes" @bind:after="Save" />
+            </div>
+            <div class="col-6">
+                <label class="form-label" for="st-break">Break between blocks (min)</label>
+                <input id="st-break" type="number" min="0" max="60" step="5" class="form-control" @bind="s.BreakMinutes" @bind:after="Save" />
+            </div>
+            <div class="col-6">
+                <label class="form-label" for="st-min">Shortest useful block (min)</label>
+                <input id="st-min" type="number" min="5" max="90" step="5" class="form-control" @bind="s.MinBlockMinutes" @bind:after="Save" />
+            </div>
+            <div class="col-6">
+                <label class="form-label" for="st-max">Max blocks per task per day</label>
+                <input id="st-max" type="number" min="1" max="10" class="form-control" @bind="s.MaxBlocksPerTaskPerDay" @bind:after="Save" />
+            </div>
+            <div class="col-6">
+                <label class="form-label" for="st-buffer">Finish this many days early</label>
+                <input id="st-buffer" type="number" min="0" max="7" class="form-control" @bind="s.BufferDays" @bind:after="Save" />
+            </div>
+            <div class="col-6">
+                <label class="form-label" for="st-review">Daily flashcard time cap (min)</label>
+                <input id="st-review" type="number" min="0" max="120" step="5" class="form-control" @bind="s.ReviewMinutesCap" @bind:after="Save" />
+            </div>
+        </div>
+        <div class="form-check form-switch mt-3">
+            <input class="form-check-input" type="checkbox" id="st-cal" @bind="s.UseCalibration" @bind:after="Save" />
+            <label class="form-check-label" for="st-cal">Learn from my history and correct my time estimates
+                <span class="d-block small text-body-secondary">Currently ×@Analytics.CalibrationFactor(Data).ToString("0.00") (needs 3+ completed tasks with logged time)</span>
+            </label>
+        </div>
+    </section>
+
+    <section class="card-surface">
+        <h2 class="section-title"><Icon Name="clock" /> Focus timer &amp; profile</h2>
+        <div class="row g-3">
+            <div class="col-6">
+                <label class="form-label" for="st-focus">Default focus length (min)</label>
+                <input id="st-focus" type="number" min="5" max="180" step="5" class="form-control" @bind="s.FocusMinutes" @bind:after="Save" />
+            </div>
+            <div class="col-6">
+                <label class="form-label" for="st-sbreak">Default break (min)</label>
+                <input id="st-sbreak" type="number" min="1" max="60" class="form-control" @bind="s.ShortBreakMinutes" @bind:after="Save" />
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="st-name">Your name</label>
+                <input id="st-name" class="form-control" @bind="s.StudentName" @bind:after="Save" placeholder="Used in your greeting" />
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-3 mt-3">
+            <span class="form-label m-0">Theme</span>
+            <ThemeToggle />
+        </div>
+    </section>
+
+    <section class="card-surface">
+        <h2 class="section-title"><Icon Name="folder" /> Your data</h2>
+        <p class="small text-body-secondary">Everything is stored privately in this browser — nothing is uploaded. Export a backup to move to another device or keep it safe.</p>
+        <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-outline-primary" @onclick="Export"><Icon Name="download" Size="16" /> Export backup</button>
+            <label class="btn btn-outline-primary mb-0">
+                <Icon Name="upload" Size="16" /> Import backup
+                <InputFile OnChange="Import" accept=".json,application/json" class="d-none" />
+            </label>
+        </div>
+        @if (_message is not null)
+        {
+            <div class="alert @(_ok ? "alert-success" : "alert-danger") mt-3 mb-0 py-2">@_message</div>
+        }
+        <hr />
+        <div class="small text-body-secondary mb-2">
+            @Data.Subjects.Count subjects · @Data.Tasks.Count tasks · @Data.Logs.Count study logs · @Data.Cards.Count flashcards
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="LoadSample">Replace with sample data</button>
+            <button class="btn btn-outline-danger btn-sm" @onclick="Reset">Erase everything</button>
+        </div>
+    </section>
+</div>
+
+@code {
+    private static readonly DayOfWeek[] WeekOrder =
+    {
+        DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday,
+        DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday
+    };
+
+    private TimeOnly StartTime
+    {
+        get => Data.Settings.DayStartTime;
+        set => Data.Settings.DayStart = value.ToString("HH:mm");
+    }
+
+    private string? _message;
+    private bool _ok;
+
+    private string Hours(DayOfWeek d) =>
+        (Data.Settings.BaseMinutesFor(d) / 60.0).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private async Task SetHours(DayOfWeek d, object? value)
+    {
+        if (!double.TryParse(value?.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var h)) return;
+        await Store.MutateAsync(data => data.Settings.AvailabilityMinutes[(int)d] = (int)Math.Round(h * 60));
+    }
+
+    private Task Save()
+    {
+        var s = Data.Settings;
+        s.SessionMinutes = Math.Clamp(s.SessionMinutes, 15, 180);
+        s.BreakMinutes = Math.Clamp(s.BreakMinutes, 0, 60);
+        s.MinBlockMinutes = Math.Clamp(s.MinBlockMinutes, 5, s.SessionMinutes);
+        s.MaxBlocksPerTaskPerDay = Math.Clamp(s.MaxBlocksPerTaskPerDay, 1, 10);
+        s.BufferDays = Math.Clamp(s.BufferDays, 0, 7);
+        s.DailyGoalMinutes = Math.Clamp(s.DailyGoalMinutes, 0, 900);
+        s.FocusMinutes = Math.Clamp(s.FocusMinutes, 5, 180);
+        s.ShortBreakMinutes = Math.Clamp(s.ShortBreakMinutes, 1, 60);
+        s.ReviewMinutesCap = Math.Clamp(s.ReviewMinutesCap, 0, 120);
+        s.StudentName = (s.StudentName ?? "").Trim();
+        return Store.SaveAsync();
+    }
+
+    private async Task Export()
+    {
+        await JS.InvokeVoidAsync("ssp.download", $"smartstudy-backup-{Today:yyyy-MM-dd}.json", "application/json", Store.Export());
+        _ok = true;
+        _message = "Backup downloaded.";
+    }
+
+    private async Task Import(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            await using var stream = e.File.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
+            using var reader = new StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+            var data = PlannerStore.Deserialize(json) ?? throw new FormatException("Empty file");
+            if (!await ConfirmAsync($"Replace your current data with this backup ({data.Tasks.Count} tasks, {data.Subjects.Count} subjects)?"))
+                return;
+            data.Onboarded = true;
+            await Store.ReplaceAllAsync(data);
+            _ok = true;
+            _message = "Backup restored.";
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or FormatException or IOException or NotSupportedException)
+        {
+            _ok = false;
+            _message = "That file isn't a valid SmartStudy backup.";
+        }
+    }
+
+    private async Task LoadSample()
+    {
+        if (await ConfirmAsync("Replace all your data with the sample semester? Export a backup first if you want to keep it."))
+        {
+            await Store.LoadSampleAsync();
+            _ok = true;
+            _message = "Sample data loaded.";
+        }
+    }
+
+    private async Task Reset()
+    {
+        if (await ConfirmAsync("Erase all subjects, tasks, history and flashcards? This can't be undone."))
+        {
+            await Store.ResetAsync();
+            _ok = true;
+            _message = "All data erased.";
+        }
+    }
+}

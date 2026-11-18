@@ -1,0 +1,89 @@
+@inherits StoreComponentBase
+
+@* Lives in the layout so focus sessions keep running and complete while you browse other pages. *@
+@if (Data.Timer is { } t)
+{
+    var remaining = Store.TimerRemainingSeconds(t);
+    <a href="focus" class="pill @(t.IsBreak ? "pill-break" : "pill-focus") @(t.Paused ? "paused" : "")" title="Open focus timer">
+        <Icon Name="@(t.Paused ? "pause" : t.IsBreak ? "coffee" : "clock")" Size="16" />
+        <span class="tabular">@Format(remaining)</span>
+    </a>
+}
+
+@code {
+    private CancellationTokenSource? _cts;
+    private bool _completing;
+
+    protected override void OnInitialized()
+    {
+        _cts = new CancellationTokenSource();
+        _ = TickLoop(_cts.Token);
+    }
+
+    public static string Format(double seconds)
+    {
+        var s = (int)Math.Ceiling(seconds);
+        return $"{s / 60:00}:{s % 60:00}";
+    }
+
+    private async Task TickLoop(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                await InvokeAsync(Tick);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task Tick()
+    {
+        var t = Data.Timer;
+        if (t is null)
+        {
+            if (_hadTimer) { _hadTimer = false; await SafeJs("ssp.setTimerTitle", (object?)null); }
+            return;
+        }
+        _hadTimer = true;
+        var remaining = Store.TimerRemainingSeconds(t);
+        await SafeJs("ssp.setTimerTitle", (t.Paused ? "⏸ " : "") + Format(remaining));
+
+        if (!t.Paused && remaining <= 0 && !_completing)
+        {
+            _completing = true;
+            try
+            {
+                var wasBreak = t.IsBreak;
+                var task = Store.TaskById(t.TaskId);
+                var minutes = await Store.StopTimerAsync();
+                Store.LastTimerResult = new TimerResult(wasBreak, minutes, task?.Id);
+                if (Data.Settings.SoundEnabled) await SafeJs("ssp.chime");
+                if (Data.Settings.Notifications) await SafeJs("ssp.notify",
+                    wasBreak ? "Break's over" : "Focus session complete",
+                    wasBreak ? "Ready for the next session?" : $"{minutes} min logged{(task is null ? "" : " on " + task.Title)}. Time for a break.");
+            }
+            finally { _completing = false; }
+        }
+        StateHasChanged();
+    }
+
+    private bool _hadTimer;
+
+    private async Task SafeJs(string fn, params object?[] args)
+    {
+        try { await JS.InvokeVoidAsync(fn, args); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    public override void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        base.Dispose();
+    }
+}

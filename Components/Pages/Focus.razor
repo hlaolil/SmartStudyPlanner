@@ -1,0 +1,248 @@
+@page "/focus"
+@inherits StoreComponentBase
+
+<PageTitle>Focus · SmartStudy</PageTitle>
+
+@{
+    var timer = Data.Timer;
+    var remaining = timer is null ? 0 : Store.TimerRemainingSeconds(timer);
+    var total = timer is null ? 1 : timer.DurationMinutes * 60.0;
+    var task = Store.TaskById(timer?.TaskId ?? _taskId);
+    var todayFocus = Data.Logs.Where(l => l.Date == Today).ToList();
+}
+
+<div class="page-head">
+    <div>
+        <h1 tabindex="-1">Focus</h1>
+        <p class="lead-sub">One task, no distractions. Time is logged automatically when the session ends.</p>
+    </div>
+</div>
+
+<div class="grid-2 focus-grid">
+    <section class="card-surface focus-card @(timer?.IsBreak == true ? "is-break" : "")">
+        @if (Store.LastTimerResult is { } r && timer is null)
+        {
+            <div class="focus-result" role="status">
+                @if (r.WasBreak)
+                {
+                    <p class="fw-semibold mb-2">Break's over. Ready for another round?</p>
+                    <button class="btn btn-primary" @onclick="StartFocus"><Icon Name="play" Size="16" /> Start @_minutes min focus</button>
+                }
+                else
+                {
+                    <p class="fw-semibold mb-2">🎉 Nice work — @r.MinutesLogged @(Store.TaskById(r.TaskId) is { } rt ? "min logged on " + rt.Title : "min logged").</p>
+                    <div class="d-flex gap-2 justify-content-center flex-wrap">
+                        <button class="btn btn-primary" @onclick="() => StartBreak(Data.Settings.ShortBreakMinutes)"><Icon Name="coffee" Size="16" /> @Data.Settings.ShortBreakMinutes min break</button>
+                        <button class="btn btn-outline-secondary" @onclick="() => StartBreak(15)">15 min break</button>
+                        <button class="btn btn-outline-secondary" @onclick="Dismiss">Skip</button>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="focus-ring-wrap">
+            <ProgressRing Value="@(timer is null ? 0 : 1 - remaining / total)" Size="260" Stroke="14"
+                          Color="@(timer?.IsBreak == true ? "var(--success)" : "var(--accent)")" Label="Timer progress">
+                <div class="focus-time tabular">@(timer is null ? $"{_minutes:00}:00" : TimerHost.Format(remaining))</div>
+                <div class="focus-mode">@(timer is null ? "Ready" : timer.IsBreak ? "Break" : timer.Paused ? "Paused" : "Focusing")</div>
+            </ProgressRing>
+        </div>
+
+        @if (timer is null)
+        {
+            <div class="vstack gap-3 mt-3">
+                <div>
+                    <label class="form-label" for="focus-task">What are you working on?</label>
+                    <select id="focus-task" class="form-select" @bind="TaskValue">
+                        <option value="">General study (no task)</option>
+                        @foreach (var t in Store.OpenTasks)
+                        {
+                            <option value="@t.Id">@Store.SubjectName(t.SubjectId) · @t.Title</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label d-block">Length</label>
+                    <div class="d-flex gap-2 flex-wrap">
+                        @foreach (var m in new[] { 15, 25, 50, 90 })
+                        {
+                            <button class="btn btn-sm @(_minutes == m ? "btn-primary" : "btn-outline-secondary")" @onclick="() => _minutes = m">@m min</button>
+                        }
+                        <input type="number" min="1" max="240" class="form-control form-control-sm" style="width:6rem" aria-label="Custom minutes" @bind="_minutes" />
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-lg" @onclick="StartFocus"><Icon Name="play" Size="18" /> Start focusing</button>
+            </div>
+        }
+        else
+        {
+            @if (task is not null && !timer.IsBreak)
+            {
+                <div class="text-center mb-3">
+                    <SubjectChip SubjectId="task.SubjectId" />
+                    <div class="fw-semibold fs-5 mt-1">@task.Title</div>
+                    @if (task.Subtasks.Count > 0)
+                    {
+                        <ul class="list-unstyled d-inline-block text-start mt-2 mb-0">
+                            @foreach (var st in task.Subtasks)
+                            {
+                                <li>
+                                    <label class="d-flex gap-2 align-items-center">
+                                        <input type="checkbox" class="form-check-input mt-0" checked="@st.Done" @onchange="() => ToggleStep(st)" />
+                                        <span class="@(st.Done ? "text-decoration-line-through text-body-secondary" : "")">@st.Title</span>
+                                    </label>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            }
+            <div class="d-flex justify-content-center gap-2 flex-wrap">
+                @if (timer.Paused)
+                {
+                    <button class="btn btn-primary btn-lg" @onclick="Store.ResumeTimerAsync"><Icon Name="play" Size="18" /> Resume</button>
+                }
+                else
+                {
+                    <button class="btn btn-outline-primary btn-lg" @onclick="Store.PauseTimerAsync"><Icon Name="pause" Size="18" /> Pause</button>
+                }
+                <button class="btn btn-outline-secondary btn-lg" @onclick="Stop" title="@(timer.IsBreak ? "End break" : "Stop and log the time so far")">
+                    <Icon Name="stop" Size="18" /> @(timer.IsBreak ? "End break" : "Finish early")
+                </button>
+                @if (!timer.IsBreak)
+                {
+                    <button class="btn btn-link text-body-secondary" @onclick="Discard">Discard</button>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="card-surface">
+        <h2 class="section-title"><Icon Name="check" /> Today's sessions</h2>
+        @if (todayFocus.Count == 0)
+        {
+            <div class="empty"><p>No sessions yet today. The first one is the hardest — start small.</p></div>
+        }
+        else
+        {
+            <div class="session-dots mb-3" aria-label="@todayFocus.Count sessions today">
+                @foreach (var l in todayFocus.OrderBy(l => l.LoggedAtUtc))
+                {
+                    <span class="session-dot" style="background:@Store.SubjectColor(l.SubjectId)" title="@l.Minutes min"></span>
+                }
+            </div>
+            <ul class="list-unstyled vstack gap-1 m-0">
+                @foreach (var l in todayFocus.OrderByDescending(l => l.LoggedAtUtc))
+                {
+                    <li class="logged-row">
+                        <span class="kind-dot" style="background:@Store.SubjectColor(l.SubjectId)"></span>
+                        <span class="flex-grow-1 text-truncate">@(Store.TaskById(l.TaskId)?.Title ?? (l.Source == "review" ? "Flashcard review" : "General study"))</span>
+                        <span class="text-body-secondary small">@l.Minutes min</span>
+                    </li>
+                }
+            </ul>
+            <div class="mt-3 fw-semibold">Total: @Analytics.FormatMinutes(todayFocus.Sum(l => l.Minutes))</div>
+        }
+
+        <hr />
+        <h3 class="subsection-title">Focus tips</h3>
+        <ul class="small text-body-secondary mb-3">
+            <li>Put your phone in another room — even face-down nearby, it costs attention.</li>
+            <li>Write down stray thoughts instead of acting on them; deal with them on your break.</li>
+            <li>Stand up, stretch and look into the distance during breaks.</li>
+        </ul>
+        <div class="d-flex flex-wrap gap-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="sound" checked="@Data.Settings.SoundEnabled" @onchange="ToggleSound" />
+                <label class="form-check-label" for="sound">Chime when done</label>
+            </div>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="notify" checked="@Data.Settings.Notifications" @onchange="ToggleNotifications" />
+                <label class="form-check-label" for="notify">Desktop notification</label>
+            </div>
+        </div>
+    </section>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "task")] public Guid? QueryTask { get; set; }
+
+    private Guid? _taskId;
+    private int _minutes;
+    private CancellationTokenSource? _cts;
+
+    private string TaskValue
+    {
+        get => _taskId?.ToString() ?? "";
+        set => _taskId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    protected override void OnInitialized()
+    {
+        _minutes = Data.Settings.FocusMinutes;
+        _taskId = QueryTask ?? Store.Plan.ForDay(Today).FirstOrDefault(b => b.TaskId.HasValue)?.TaskId;
+        _cts = new CancellationTokenSource();
+        _ = Refresh(_cts.Token);
+    }
+
+    private async Task Refresh(CancellationToken token)
+    {
+        using var t = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+        try
+        {
+            while (await t.WaitForNextTickAsync(token))
+                if (Data.Timer is { Paused: false }) await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task StartFocus()
+    {
+        Store.LastTimerResult = null;
+        await Store.StartTimerAsync(_taskId, Math.Clamp(_minutes, 1, 240));
+        try { await JS.InvokeVoidAsync("ssp.unlockAudio"); } catch (JSException) { }
+    }
+
+    private async Task StartBreak(int minutes)
+    {
+        Store.LastTimerResult = null;
+        await Store.StartTimerAsync(null, minutes, isBreak: true);
+    }
+
+    private void Dismiss() => Store.LastTimerResult = null;
+
+    private async Task Stop()
+    {
+        var t = Data.Timer;
+        var minutes = await Store.StopTimerAsync();
+        Store.LastTimerResult = t is { IsBreak: false } ? new TimerResult(false, minutes, t.TaskId) : null;
+    }
+
+    private async Task Discard()
+    {
+        if (await ConfirmAsync("Discard this session without logging the time?"))
+            await Store.StopTimerAsync(log: false);
+    }
+
+    private Task ToggleStep(SubTask st) => Store.MutateAsync(_ => st.Done = !st.Done);
+
+    private Task ToggleSound() => Store.MutateAsync(d => d.Settings.SoundEnabled = !d.Settings.SoundEnabled);
+
+    private async Task ToggleNotifications()
+    {
+        var enable = !Data.Settings.Notifications;
+        if (enable)
+        {
+            var result = await JS.InvokeAsync<string>("ssp.requestNotifications");
+            enable = result == "granted";
+        }
+        await Store.MutateAsync(d => d.Settings.Notifications = enable);
+    }
+
+    public override void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        base.Dispose();
+    }
+}

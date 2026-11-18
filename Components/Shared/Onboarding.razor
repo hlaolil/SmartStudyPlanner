@@ -1,0 +1,43 @@
+@inherits StoreComponentBase
+
+<div class="onboarding">
+    <div class="onboarding-card card-surface">
+        <div class="brand-mark lg mb-3"><Icon Name="sparkles" Size="28" /></div>
+        <h1 tabindex="-1">Your study plan, built for you.</h1>
+        <p class="lead-sub">Add your deadlines and how much time you have. SmartStudy spreads the work across your week, warns you before you fall behind, and re-plans when life happens.</p>
+
+        <ul class="feature-list">
+            <li><Icon Name="calendar" /> <span><b>Automatic scheduling</b> around deadlines, exams and your free time</span></li>
+            <li><Icon Name="clock" /> <span><b>Focus timer</b> that logs progress as you work</span></li>
+            <li><Icon Name="cards" /> <span><b>Spaced-repetition flashcards</b> timed for your exams</span></li>
+            <li><Icon Name="award" /> <span><b>Grade tracking</b>: see what score you need on what's left</span></li>
+        </ul>
+
+        <div class="mb-3">
+            <label class="form-label" for="ob-name">What should we call you? <span class="text-body-secondary">(optional)</span></label>
+            <input id="ob-name" class="form-control" @bind="_name" placeholder="Your first name" />
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-primary btn-lg" @onclick="StartFresh">Start with a blank planner</button>
+            <button class="btn btn-outline-primary btn-lg" @onclick="LoadSample"><Icon Name="sparkles" Size="16" /> Explore with a sample semester</button>
+        </div>
+        <p class="small text-body-secondary mt-3 mb-0">Everything is saved privately in this browser. No account needed. You can export a backup any time from Settings.</p>
+    </div>
+</div>
+
+@code {
+    private string _name = "";
+
+    private Task StartFresh() => Store.MutateAsync(d =>
+    {
+        d.Onboarded = true;
+        d.Settings.StudentName = _name.Trim();
+    });
+
+    private async Task LoadSample()
+    {
+        Data.Settings.StudentName = _name.Trim();
+        await Store.LoadSampleAsync();
+    }
+}

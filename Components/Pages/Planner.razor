@@ -1,0 +1,206 @@
+@page "/planner"
+@inherits StoreComponentBase
+
+<PageTitle>Planner · SmartStudy</PageTitle>
+
+@{
+    var plan = Store.Plan;
+    var weekStart = Analytics.StartOfWeek(Today).AddDays(_weekOffset * 7);
+    var days = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
+    var forecasts = plan.Forecasts.Values
+        .Select(f => (f, t: Store.TaskById(f.TaskId)))
+        .Where(x => x.t is not null)
+        .OrderBy(x => x.t!.DueDate)
+        .ToList();
+}
+
+<div class="page-head">
+    <div>
+        <h1 tabindex="-1">Planner</h1>
+        <p class="lead-sub">Your plan rebuilds itself whenever tasks, progress or availability change.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-secondary" href="settings"><Icon Name="settings" Size="16" /> Weekly hours</a>
+        <button class="btn btn-outline-primary" @onclick="ExportIcs"><Icon Name="download" Size="16" /> Add to calendar (.ics)</button>
+    </div>
+</div>
+
+@if (plan.CalibrationFactor > 1.05 || plan.CalibrationFactor < 0.95)
+{
+    <div class="callout mb-3">
+        <Icon Name="info" />
+        <span>Based on your history, tasks take you <b>@((plan.CalibrationFactor * 100).ToString("0"))%</b> of your estimates, so the plan
+        @(plan.CalibrationFactor > 1 ? "adds" : "trims") time accordingly. <a href="settings">Change</a></span>
+    </div>
+}
+
+<div class="week-nav">
+    <button class="btn btn-icon" aria-label="Previous week" @onclick="() => _weekOffset--"><Icon Name="chevron-left" /></button>
+    <div class="week-label">
+        <b>@weekStart.ToString("d MMM") – @weekStart.AddDays(6).ToString("d MMM yyyy")</b>
+        @if (_weekOffset != 0)
+        {
+            <button class="btn btn-link btn-sm" @onclick="() => _weekOffset = 0">This week</button>
+        }
+    </div>
+    <button class="btn btn-icon" aria-label="Next week" @onclick="() => _weekOffset++"><Icon Name="chevron-right" /></button>
+</div>
+
+<div class="week-grid">
+    @foreach (var d in days)
+    {
+        var isPast = d < Today;
+        var logs = Data.Logs.Where(l => l.Date == d).ToList();
+        var blocks = isPast ? new List<PlannedBlock>() : plan.ForDay(d).ToList();
+        var planned = blocks.Sum(b => b.Minutes);
+        var done = logs.Sum(l => l.Minutes);
+        var available = Data.Settings.MinutesFor(d);
+        var overridden = Data.Settings.DayOverrides.ContainsKey(d.ToString("yyyy-MM-dd"));
+        var dueHere = Data.Tasks.Where(t => !t.Completed && t.DueDate == d).ToList();
+        <div class="day-col @(d == Today ? "today" : "") @(isPast ? "past" : "")">
+            <button class="day-head" title="Change available time" @onclick="() => OpenDay(d)">
+                <span class="dow">@d.ToString("ddd")</span>
+                <span class="dnum">@d.Day</span>
+                <span class="avail @(overridden ? "overridden" : "")">@(available == 0 ? "Day off" : Analytics.FormatMinutes(available))</span>
+            </button>
+            @if (!isPast && available > 0)
+            {
+                <div class="load-bar" title="@Analytics.FormatMinutes(planned + (d == Today ? done : 0)) of @Analytics.FormatMinutes(available) used">
+                    <span style="width:@Pct((planned + (d == Today ? done : 0)) / (double)available)"></span>
+                </div>
+            }
+            @foreach (var t in dueHere)
+            {
+                <div class="due-marker" style="--chip:@Store.SubjectColor(t.SubjectId)" title="@t.Title is due">
+                    <Icon Name="target" Size="12" /> @t.Title
+                </div>
+            }
+            @foreach (var l in logs)
+            {
+                <div class="block done" style="--chip:@Store.SubjectColor(l.SubjectId)" title="Logged">
+                    <div class="block-title"><Icon Name="check" Size="12" /> @(Store.TaskById(l.TaskId)?.Title ?? (l.Source == "review" ? "Flashcard review" : "Study"))</div>
+                    <div class="block-time">@l.Minutes min</div>
+                </div>
+            }
+            @foreach (var b in blocks)
+            {
+                <div class="block @(b.Kind == BlockKind.Review ? "review" : "")" style="--chip:@(b.Kind == BlockKind.Review ? "var(--accent)" : Store.SubjectColor(b.SubjectId))">
+                    <div class="block-title">@b.Title</div>
+                    <div class="block-time">@b.Start.ToString("HH:mm")–@b.End.ToString("HH:mm")</div>
+                </div>
+            }
+            @if (!isPast && blocks.Count == 0 && logs.Count == 0)
+            {
+                <div class="day-empty">@(available == 0 ? "Rest day" : "Free")</div>
+            }
+        </div>
+    }
+</div>
+
+<div class="grid-2 mt-4">
+    <section class="card-surface">
+        <h2 class="section-title"><Icon Name="chart" /> Workload — next 4 weeks</h2>
+        <p class="small text-body-secondary">Planned study vs. time you have each day.</p>
+        <div class="workload" role="img" aria-label="Planned study minutes per day for the next 28 days">
+            @{ var max = Math.Max(60, Enumerable.Range(0, 28).Max(i => Math.Max(Data.Settings.MinutesFor(Today.AddDays(i)), plan.PlannedMinutes(Today.AddDays(i))))); }
+            @for (var i = 0; i < 28; i++)
+            {
+                var d = Today.AddDays(i);
+                var p = plan.PlannedMinutes(d);
+                var a = Data.Settings.MinutesFor(d);
+                <div class="wl-col @(d.DayOfWeek == DayOfWeek.Monday ? "week-start" : "")" title="@d.ToString("ddd d MMM"): @Analytics.FormatMinutes(p) planned of @Analytics.FormatMinutes(a)">
+                    <div class="wl-avail" style="height:@Pct(a / (double)max)"></div>
+                    <div class="wl-plan @(a > 0 && p >= a * 0.95 ? "full" : "")" style="height:@Pct(p / (double)max)"></div>
+                </div>
+            }
+        </div>
+        <div class="d-flex justify-content-between small text-body-secondary mt-1">
+            <span>Today</span><span>@Today.AddDays(27).ToString("d MMM")</span>
+        </div>
+        <div class="legend mt-2"><span class="lg plan"></span> Planned <span class="lg avail"></span> Available <span class="lg full"></span> Fully booked</div>
+    </section>
+
+    <section class="card-surface">
+        <h2 class="section-title"><Icon Name="target" /> Deadline forecast</h2>
+        @if (forecasts.Count == 0)
+        {
+            <div class="empty"><p>No open tasks.</p></div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm align-middle forecast-table">
+                    <thead><tr><th>Task</th><th>Due</th><th class="text-end">Left</th><th>Finishes</th><th>Status</th></tr></thead>
+                    <tbody>
+                        @foreach (var (f, t) in forecasts)
+                        {
+                            <tr>
+                                <td><span class="kind-dot" style="background:@Store.SubjectColor(t!.SubjectId)"></span> @t.Title</td>
+                                <td class="text-nowrap">@t.DueDate.ToString("ddd d MMM")</td>
+                                <td class="text-end text-nowrap">@Analytics.FormatMinutes(f.RemainingMinutes)</td>
+                                <td class="text-nowrap">@(f.LastSessionDate?.ToString("ddd d MMM") ?? "—")</td>
+                                <td><StatusBadge Forecast="f" /></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+<Modal @bind-Show="_dayOpen" Title="@($"Study time on {_day:dddd d MMMM}")">
+    <ChildContent>
+        <p class="text-body-secondary">Normally @Analytics.FormatMinutes(Data.Settings.BaseMinutesFor(_day.DayOfWeek)) on @(_day.DayOfWeek)s. Change it just for this day — the plan adapts instantly.</p>
+        <label class="form-label" for="day-hours">Hours available</label>
+        <div class="d-flex align-items-center gap-3">
+            <input id="day-hours" type="range" class="form-range" min="0" max="12" step="0.25" @bind="_dayHours" @bind:event="oninput" />
+            <span class="fw-semibold tabular" style="min-width:4rem">@Analytics.FormatMinutes((int)(_dayHours * 60))</span>
+        </div>
+        <div class="d-flex gap-2 mt-3 flex-wrap">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _dayHours = 0">Day off</button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _dayHours = 1">1h</button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _dayHours = 2">2h</button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _dayHours = 4">4h</button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _dayHours = 6">6h</button>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-outline-secondary me-auto" @onclick="ResetDay">Use default</button>
+        <button class="btn btn-primary" @onclick="SaveDay">Save</button>
+    </Footer>
+</Modal>
+
+@code {
+    private int _weekOffset;
+    private bool _dayOpen;
+    private DateOnly _day;
+    private double _dayHours;
+
+    private static string Pct(double v) => Math.Clamp(v * 100, 0, 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    private void OpenDay(DateOnly d)
+    {
+        _day = d;
+        _dayHours = Data.Settings.MinutesFor(d) / 60.0;
+        _dayOpen = true;
+    }
+
+    private async Task SaveDay()
+    {
+        await Store.SetDayOverrideAsync(_day, (int)Math.Round(_dayHours * 60));
+        _dayOpen = false;
+    }
+
+    private async Task ResetDay()
+    {
+        await Store.SetDayOverrideAsync(_day, null);
+        _dayOpen = false;
+    }
+
+    private async Task ExportIcs()
+    {
+        var ics = IcsExporter.Build(Store.Plan, Data);
+        await JS.InvokeVoidAsync("ssp.download", $"study-plan-{Today:yyyy-MM-dd}.ics", "text/calendar", ics);
+    }
+}

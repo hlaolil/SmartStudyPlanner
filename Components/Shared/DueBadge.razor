@@ -1,0 +1,17 @@
+<span class="due-badge @Css">@Analytics.RelativeDue(Due, Today)</span>
+
+@code {
+    [Parameter] public DateOnly Due { get; set; }
+    [Parameter] public DateOnly Today { get; set; }
+    [Parameter] public bool Completed { get; set; }
+
+    private string Css
+    {
+        get
+        {
+            if (Completed) return "muted";
+            var d = Due.DayNumber - Today.DayNumber;
+            return d < 0 ? "overdue" : d <= 1 ? "soon" : d <= 4 ? "near" : "later";
+        }
+    }
+}

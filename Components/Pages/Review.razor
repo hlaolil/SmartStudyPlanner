@@ -1,0 +1,308 @@
+@page "/review"
+@inherits StoreComponentBase
+
+<PageTitle>Review · SmartStudy</PageTitle>
+
+@if (_queue is not null)
+{
+    <div class="review-session">
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="EndSession"><Icon Name="x" Size="14" /> End</button>
+            <div class="mini-bar flex-grow-1"><span style="width:@ProgressPct"></span></div>
+            <span class="small text-body-secondary tabular">@_reviewed reviewed · @_queue.Count left</span>
+        </div>
+
+        @if (_queue.Count == 0)
+        {
+            <div class="card-surface text-center p-5">
+                <div class="display-6 mb-2">🎉</div>
+                <h2 class="h4">Session complete</h2>
+                <p class="text-body-secondary">You reviewed @_reviewed @(_reviewed == 1 ? "card" : "cards") in @Analytics.FormatMinutes(SessionMinutes). Your next reviews are scheduled automatically.</p>
+                <button class="btn btn-primary" @onclick="EndSession">Done</button>
+            </div>
+        }
+        else
+        {
+            var card = _queue[0];
+            var exam = Store.NextExamFor(card.SubjectId);
+            <div class="flashcard card-surface" tabindex="0" id="flashcard" @onkeydown="OnKey">
+                <div class="d-flex justify-content-between align-items-center">
+                    <SubjectChip SubjectId="card.SubjectId" />
+                    @if (exam is { } ex)
+                    {
+                        <span class="small text-body-secondary" title="Intervals are capped so you see this again before the exam">Exam: @ex.ToString("ddd d MMM")</span>
+                    }
+                </div>
+                <div class="flashcard-front">@card.Front</div>
+                @if (_revealed)
+                {
+                    <hr />
+                    <div class="flashcard-back">@card.Back</div>
+                }
+            </div>
+
+            @if (!_revealed)
+            {
+                <button class="btn btn-primary btn-lg w-100 mt-3" @onclick="() => _revealed = true">Show answer <kbd>Space</kbd></button>
+            }
+            else
+            {
+                <div class="grade-row mt-3">
+                    @foreach (var g in Enum.GetValues<ReviewGrade>())
+                    {
+                        var interval = SpacedRepetition.PreviewInterval(card, g, Today, exam);
+                        <button class="btn grade-@g.ToString().ToLower()" @onclick="() => Grade(card, g)">
+                            <span class="grade-label">@g</span>
+                            <span class="grade-interval">@SpacedRepetition.Describe(interval)</span>
+                            <kbd>@((int)g + 1)</kbd>
+                        </button>
+                    }
+                </div>
+            }
+        }
+    </div>
+    return;
+}
+
+@{
+    var due = Data.Cards.Where(c => c.DueDate <= Today).ToList();
+    var decks = Data.Cards.GroupBy(c => c.SubjectId).OrderBy(g => Store.SubjectName(g.Key)).ToList();
+    var forecast = Enumerable.Range(1, 7).Select(i => (d: Today.AddDays(i), n: Data.Cards.Count(c => c.DueDate == Today.AddDays(i)))).ToList();
+}
+
+<div class="page-head">
+    <div>
+        <h1 tabindex="-1">Review</h1>
+        <p class="lead-sub">Spaced repetition: each card comes back just before you'd forget it — and always before your next exam.</p>
+    </div>
+    <button class="btn btn-primary btn-lg" disabled="@(due.Count == 0)" @onclick="() => StartSession(null)">
+        <Icon Name="play" Size="18" /> Review @due.Count due
+    </button>
+</div>
+
+<div class="grid-2">
+    <section class="card-surface">
+        <h2 class="section-title"><Icon Name="cards" /> Decks</h2>
+        @if (decks.Count == 0)
+        {
+            <div class="empty"><p>No cards yet. Add a few key facts, formulas or definitions →</p></div>
+        }
+        else
+        {
+            <ul class="list-unstyled vstack gap-2 m-0">
+                @foreach (var deck in decks)
+                {
+                    var dueHere = deck.Count(c => c.DueDate <= Today);
+                    var learned = deck.Count(c => c.Repetitions >= 2);
+                    <li class="deck-row">
+                        <span class="kind-dot" style="background:@Store.SubjectColor(deck.Key)"></span>
+                        <div class="flex-grow-1">
+                            <div class="fw-semibold">@Store.SubjectName(deck.Key)</div>
+                            <div class="small text-body-secondary">@deck.Count() cards · @learned learned</div>
+                        </div>
+                        @if (dueHere > 0)
+                        {
+                            <button class="btn btn-sm btn-primary" @onclick="() => StartSession(deck.Key)">@dueHere due</button>
+                        }
+                        else
+                        {
+                            <span class="small text-success">✓ Done</span>
+                        }
+                    </li>
+                }
+            </ul>
+            <h3 class="subsection-title mt-4">Coming up</h3>
+            <div class="forecast-row">
+                @{ var maxN = Math.Max(1, forecast.Max(f => f.n)); }
+                @foreach (var (d, n) in forecast)
+                {
+                    <div class="fc-col" title="@n due @d.ToString("ddd d MMM")">
+                        <div class="fc-bar"><span style="height:@((n * 100.0 / maxN).ToString("0", System.Globalization.CultureInfo.InvariantCulture))%"></span></div>
+                        <div class="fc-n">@n</div>
+                        <div class="fc-d">@d.ToString("ddd")</div>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="card-surface">
+        <h2 class="section-title"><Icon Name="plus" /> Add cards</h2>
+        <div class="segmented mb-3" role="tablist">
+            <button role="tab" aria-selected="@(!_bulk)" class="@(!_bulk ? "active" : "")" @onclick="() => _bulk = false">One card</button>
+            <button role="tab" aria-selected="@_bulk" class="@(_bulk ? "active" : "")" @onclick="() => _bulk = true">Bulk import</button>
+        </div>
+        <div class="mb-2">
+            <label class="form-label" for="card-subject">Subject</label>
+            <select id="card-subject" class="form-select" @bind="_subject">
+                <option value="">General</option>
+                @foreach (var s in Store.ActiveSubjects)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+        @if (!_bulk)
+        {
+            <div class="mb-2">
+                <label class="form-label" for="card-front">Front (question)</label>
+                <textarea id="card-front" class="form-control" rows="2" @bind="_front" @bind:event="oninput" placeholder="e.g. What does the mitochondria do?"></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="card-back">Back (answer)</label>
+                <textarea id="card-back" class="form-control" rows="2" @bind="_back" @bind:event="oninput" placeholder="Keep it short — one idea per card"></textarea>
+            </div>
+            <button class="btn btn-primary" disabled="@(string.IsNullOrWhiteSpace(_front) || string.IsNullOrWhiteSpace(_back))" @onclick="AddOne">Add card</button>
+        }
+        else
+        {
+            <label class="form-label" for="card-bulk">One card per line: <code>front :: back</code> (tab-separated also works — paste from a spreadsheet)</label>
+            <textarea id="card-bulk" class="form-control font-monospace" rows="7" @bind="_bulkText" @bind:event="oninput"
+                      placeholder="Powerhouse of the cell :: Mitochondria&#10;Year WWII ended :: 1945"></textarea>
+            <div class="d-flex align-items-center gap-3 mt-2">
+                <button class="btn btn-primary" disabled="@(ParseBulk().Count == 0)" @onclick="AddBulk">Import @ParseBulk().Count cards</button>
+            </div>
+        }
+        @if (_added > 0)
+        {
+            <div class="small text-success mt-2">✓ Added @_added @(_added == 1 ? "card" : "cards")</div>
+        }
+    </section>
+</div>
+
+@if (Data.Cards.Count > 0)
+{
+    <section class="card-surface mt-3">
+        <div class="section-head">
+            <h2 class="section-title"><Icon Name="search" /> All cards</h2>
+            <input class="form-control form-control-sm w-auto" placeholder="Search cards" aria-label="Search cards" @bind="_search" @bind:event="oninput" />
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead><tr><th>Front</th><th>Back</th><th>Subject</th><th>Next</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var c in Data.Cards.Where(Matches).OrderBy(c => c.DueDate).Take(_showAll ? int.MaxValue : 50))
+                    {
+                        <tr>
+                            <td>@c.Front</td>
+                            <td class="text-body-secondary">@c.Back</td>
+                            <td class="text-nowrap"><SubjectChip SubjectId="c.SubjectId" /></td>
+                            <td class="text-nowrap small">@(c.DueDate <= Today ? "Due" : c.DueDate.ToString("d MMM"))</td>
+                            <td class="text-end"><button class="btn btn-icon btn-sm" aria-label="Delete card" @onclick="() => Store.DeleteCardAsync(c.Id)"><Icon Name="trash" Size="15" /></button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (!_showAll && Data.Cards.Count(Matches) > 50)
+        {
+            <button class="btn btn-link btn-sm" @onclick="() => _showAll = true">Show all @Data.Cards.Count(Matches)</button>
+        }
+    </section>
+}
+
+@code {
+    private List<Flashcard>? _queue;
+    private bool _revealed;
+    private int _reviewed;
+    private int _sessionTotal;
+    private DateTime _sessionStart;
+    private bool _focusCard;
+
+    private string _subject = "";
+    private string _front = "";
+    private string _back = "";
+    private bool _bulk;
+    private string _bulkText = "";
+    private int _added;
+    private string _search = "";
+    private bool _showAll;
+
+    private int SessionMinutes => Math.Max(1, (int)Math.Round((DateTime.UtcNow - _sessionStart).TotalMinutes));
+    private string ProgressPct => _sessionTotal == 0 ? "0%" :
+        (100.0 * (_sessionTotal - _queue!.Count) / _sessionTotal).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    private bool Matches(Flashcard c) =>
+        string.IsNullOrWhiteSpace(_search)
+        || c.Front.Contains(_search, StringComparison.OrdinalIgnoreCase)
+        || c.Back.Contains(_search, StringComparison.OrdinalIgnoreCase);
+
+    private void StartSession(Guid? subjectId)
+    {
+        var rng = new Random();
+        _queue = Data.Cards
+            .Where(c => c.DueDate <= Today && (subjectId is null || c.SubjectId == subjectId))
+            .OrderBy(c => c.DueDate).ThenBy(_ => rng.Next())
+            .ToList();
+        _sessionTotal = _queue.Count;
+        _reviewed = 0;
+        _revealed = false;
+        _sessionStart = DateTime.UtcNow;
+        _focusCard = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusCard && _queue is { Count: > 0 })
+        {
+            _focusCard = false;
+            try { await JS.InvokeVoidAsync("ssp.focus", "#flashcard"); } catch (JSException) { }
+        }
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (_queue is not { Count: > 0 }) return;
+        if (!_revealed && (e.Key == " " || e.Key == "Enter")) { _revealed = true; return; }
+        if (_revealed && e.Key is "1" or "2" or "3" or "4")
+            await Grade(_queue[0], (ReviewGrade)(e.Key[0] - '1'));
+    }
+
+    private async Task Grade(Flashcard card, ReviewGrade grade)
+    {
+        _queue!.RemoveAt(0);
+        await Store.ReviewCardAsync(card, grade);
+        _reviewed++;
+        if (grade == ReviewGrade.Again)
+        {
+            _queue.Add(card); // see it again this session
+            _sessionTotal++;
+        }
+        _revealed = false;
+        _focusCard = true;
+    }
+
+    private async Task EndSession()
+    {
+        if (_reviewed > 0)
+            await Store.LogAsync(null, SessionMinutes, "review");
+        _queue = null;
+    }
+
+    private Guid? SubjectId => Guid.TryParse(_subject, out var g) ? g : null;
+
+    private async Task AddOne()
+    {
+        await Store.AddCardsAsync(new[] { new Flashcard { SubjectId = SubjectId, Front = _front.Trim(), Back = _back.Trim() } });
+        _front = _back = "";
+        _added = 1;
+    }
+
+    private List<(string front, string back)> ParseBulk() =>
+        _bulkText.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line =>
+            {
+                var parts = line.Contains("::") ? line.Split("::", 2) : line.Split('\t', 2);
+                return parts.Length == 2 ? (parts[0].Trim(), parts[1].Trim()) : ("", "");
+            })
+            .Where(p => p.Item1.Length > 0 && p.Item2.Length > 0)
+            .ToList();
+
+    private async Task AddBulk()
+    {
+        var cards = ParseBulk().Select(p => new Flashcard { SubjectId = SubjectId, Front = p.front, Back = p.back }).ToList();
+        await Store.AddCardsAsync(cards);
+        _added = cards.Count;
+        _bulkText = "";
+    }
+}
